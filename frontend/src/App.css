@@ -52,8 +52,14 @@ body {
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0;
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
     font-size: 0.9rem;
     font-weight: 500;
+    color: #888;
     color: #888;
     cursor: pointer;
     transition: all 0.2s;
@@ -63,9 +69,14 @@ body {
 .nav-btn:hover {
     color: #333;
     border-bottom-color: #ccc;
+    color: #333;
+    border-bottom-color: #ccc;
 }
 
 .nav-btn.active {
+    color: #222;
+    font-weight: 600;
+    border-bottom-color: #222;
     color: #222;
     font-weight: 600;
     border-bottom-color: #222;
@@ -105,34 +116,34 @@ body {
 }
 
 .weekly-spending {
-    margin-bottom: 4px;
-    padding-bottom: 4px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
     border-bottom: 1px solid #e0e0e0;
 }
 
 .weekly-spending h3 {
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     color: #555;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
 }
 
 .spending-amount {
-    font-size: 0.95rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: #e74c3c;
 }
 
 .spending-details {
     display: flex;
-    gap: 12px;
-    margin-top: 2px;
+    gap: 16px;
+    margin-top: 4px;
 }
 
 .detail-item {
     display: flex;
     align-items: center;
-    gap: 4px;
-    font-size: 0.7rem;
+    gap: 6px;
+    font-size: 0.8rem;
     color: #666;
 }
 
