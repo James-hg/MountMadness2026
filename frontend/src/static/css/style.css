@@ -29,10 +29,6 @@ body {
     gap: 8px;
 }
 
-.nav-profile {
-    margin-left: auto;
-}
-
 .profile-btn {
     width: 36px;
     height: 36px;
@@ -259,6 +255,249 @@ body {
     background: #5a4bd1;
 }
 
+/* ── Auth Pages ── */
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px 5%;
+    background: #eeedf5;
+}
+
+.auth-panel {
+    background: #fff;
+    border: 1px solid #e0dde8;
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    max-width: 460px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 24px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 12px;
+    border: 1.5px solid #d0cde0;
+    border-radius: 20px;
+    background: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    text-decoration: none;
+    text-align: center;
+    display: block;
+}
+
+.auth-tab:hover {
+    background: #f0eef8;
+}
+
+.auth-tab.active {
+    background: #d4d0f0;
+    border-color: #a8a0d0;
+    color: #333;
+    font-weight: 600;
+}
+
+.auth-error {
+    background: #ffeaea;
+    border: 1.5px solid #e74c3c;
+    border-radius: 12px;
+    color: #c0392b;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+}
+
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 8px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid #d0cde0;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.form-group input:focus {
+    border-color: #a8a0d0;
+}
+
+.form-group input::placeholder {
+    color: #aaa;
+}
+
+.password-wrapper {
+    display: flex;
+    gap: 8px;
+}
+
+.password-wrapper input {
+    flex: 1;
+    min-width: 0;
+}
+
+.show-password-btn {
+    width: 64px;
+    padding: 10px 0;
+    border: 1.5px solid #d0cde0;
+    border-radius: 20px;
+    background: #fff;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.show-password-btn:hover {
+    background: #f0eef8;
+}
+
+.password-strength {
+    margin-top: 10px;
+}
+
+.strength-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: #e0dde8;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.strength-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s, background 0.3s;
+}
+
+.strength-requirements {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    font-size: 0.78rem;
+    color: #999;
+}
+
+.strength-requirements span.met {
+    color: #2ecc71;
+}
+
+.auth-btn {
+    width: 100%;
+    padding: 14px;
+    background: #b8b4e0;
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 8px;
+    font-family: inherit;
+}
+
+.auth-btn:hover {
+    background: #a8a0d0;
+}
+
+.auth-btn:disabled {
+    background: #d4d0e8;
+    cursor: not-allowed;
+}
+
+.auth-switch {
+    text-align: left;
+    margin-top: 20px;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.auth-switch a {
+    color: #7870b0;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.auth-switch a:hover {
+    text-decoration: underline;
+}
+
+/* ── Profile Dropdown ── */
+.nav-profile {
+    margin-left: auto;
+    position: relative;
+}
+
+.profile-dropdown {
+    display: none;
+    position: absolute;
+    top: 44px;
+    right: 0;
+    background: #fff;
+    border: 2px solid #222;
+    border-radius: 12px;
+    padding: 8px 0;
+    min-width: 160px;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.profile-dropdown.open {
+    display: block;
+}
+
+.profile-dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    background: none;
+    border: none;
+    text-align: left;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.profile-dropdown-item:hover {
+    background: #f0f2f5;
+}
+
+.profile-dropdown-item.logout {
+    color: #e74c3c;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
     .container {
@@ -270,5 +509,9 @@ body {
     .chat-panel {
         flex: none;
         height: 50vh;
+    }
+
+    .auth-panel {
+        padding: 24px;
     }
 }

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Financial Dashboard</title>
+    <link rel="stylesheet" href="../static/css/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-panel">
+            <div class="auth-tabs">
+                <a class="auth-tab active" href="login.html">Login</a>
+                <a class="auth-tab" href="signup.html">Register</a>
+            </div>
+
+            <div class="auth-error" id="authError" style="display: none;"></div>
+
+            <form id="loginForm" novalidate>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email"
+                           placeholder="you@example.com" required autocomplete="email">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="password" name="password"
+                               placeholder="Your password" required autocomplete="current-password">
+                        <button type="button" class="show-password-btn" id="showPwBtn">Show</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="auth-btn" id="loginBtn">
+                    Login
+                </button>
+            </form>
+
+            <p class="auth-switch">
+                No account? <a href="signup.html">Register</a>
+            </p>
+        </div>
+    </div>
+
+    <script src="../static/js/auth.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            Auth.redirectIfAuth();
+
+            const form = document.getElementById("loginForm");
+            const errorEl = document.getElementById("authError");
+            const btn = document.getElementById("loginBtn");
+            const pwInput = document.getElementById("password");
+            const showBtn = document.getElementById("showPwBtn");
+
+            showBtn.addEventListener("click", () => {
+                const isHidden = pwInput.type === "password";
+                pwInput.type = isHidden ? "text" : "password";
+                showBtn.textContent = isHidden ? "Hide" : "Show";
+            });
+
+            form.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                errorEl.style.display = "none";
+
+                const email = form.email.value.trim();
+                const password = pwInput.value;
+
+                if (!email || !password) {
+                    errorEl.textContent = "Please fill in all fields.";
+                    errorEl.style.display = "block";
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = "Logging in...";
+
+                try {
+                    await Auth.login(email, password);
+                    window.location.href = "/index.html";
+                } catch (err) {
+                    errorEl.textContent = err.message;
+                    errorEl.style.display = "block";
+                    btn.disabled = false;
+                    btn.textContent = "Login";
+                }
+            });
+        });
+    </script>
+</body>
+</html>
