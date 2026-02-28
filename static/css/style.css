@@ -11,16 +11,78 @@ body {
     min-height: 100vh;
 }
 
+/* ── Top Navigation ── */
+.top-nav {
+    padding: 12px 5% 12px 5%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-logo {
+    width: 48px;
+    flex-shrink: 0;
+}
+
+.nav-links {
+    display: flex;
+    gap: 8px;
+}
+
+.nav-profile {
+    margin-left: auto;
+}
+
+.profile-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: #6c5ce7;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.profile-btn:hover {
+    opacity: 0.85;
+}
+
+.nav-btn {
+    padding: 8px 18px;
+    background: #fff;
+    border: 1.5px solid #ddd;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #555;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.nav-btn:hover {
+    background: #f0f2f5;
+    border-color: #bbb;
+}
+
+.nav-btn.active {
+    background: #222;
+    color: #fff;
+    border-color: #222;
+}
+
 .container {
     display: flex;
-    min-height: 100vh;
-    padding: 20px;
-    gap: 20px;
+    min-height: calc(100vh - 60px);
+    padding: 0 5% 20px 5%;
+    gap: 3%;
 }
 
 /* ── Left Panel: Graph ── */
 .graph-panel {
-    flex: 7;
+    flex: 8;
     background: #fff;
     border: 2px solid #222;
     border-radius: 12px;
@@ -90,7 +152,7 @@ body {
 
 /* ── Right Panel: AI Chatbox ── */
 .chat-panel {
-    flex: 3;
+    flex: 2;
     background: #fff;
     border: 2px solid #222;
     border-radius: 12px;
@@ -159,18 +221,19 @@ body {
 }
 
 .chat-input-area {
-    padding: 12px 16px;
+    padding: 10px;
     border-top: 1px solid #e0e0e0;
     display: flex;
-    gap: 8px;
+    gap: 6px;
 }
 
 .chat-input-area input {
     flex: 1;
-    padding: 10px 14px;
+    min-width: 0;
+    padding: 8px 10px;
     border: 1.5px solid #ddd;
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     outline: none;
     transition: border-color 0.2s;
 }
@@ -180,14 +243,15 @@ body {
 }
 
 .chat-input-area button {
-    padding: 10px 20px;
+    padding: 8px 14px;
     background: #6c5ce7;
     color: #fff;
     border: none;
     border-radius: 8px;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 600;
     cursor: pointer;
+    flex-shrink: 0;
     transition: background 0.2s;
 }
 
