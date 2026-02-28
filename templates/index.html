@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Left Panel: Graph -->
+        <div class="graph-panel">
+            <div class="weekly-spending">
+                <h3>Weekly Spending</h3>
+                <div class="spending-amount" id="spendingAmount">$0</div>
+                <div class="spending-details">
+                    <div class="detail-item">
+                        <span class="dot income"></span>
+                        Income: <strong id="incomeValue">$0</strong>
+                    </div>
+                    <div class="detail-item">
+                        <span class="dot outcome"></span>
+                        Outcome: <strong id="outcomeValue">$0</strong>
+                    </div>
+                </div>
+            </div>
+            <h2>Financial Overview</h2>
+            <div class="chart-wrapper">
+                <canvas id="financialChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Right Panel: AI Chatbox -->
+        <div class="chat-panel">
+            <div class="chat-header">
+                AI Assistant
+                <span class="ai-badge">AI</span>
+            </div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Ask about your finances..." autocomplete="off">
+                <button id="sendBtn">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/chart.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>
