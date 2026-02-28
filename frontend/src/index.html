@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="static/css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
-<body>
+<body style="visibility: hidden;">
     <nav class="top-nav">
         <div class="nav-logo">
             <!-- Logo goes here -->
@@ -20,7 +20,11 @@
             <button class="nav-btn">Settings</button>
         </div>
         <div class="nav-profile">
-            <button class="profile-btn">J</button>
+            <button class="profile-btn" id="profileBtn">J</button>
+            <div class="profile-dropdown" id="profileDropdown">
+                <button class="profile-dropdown-item" id="profileName" disabled>User</button>
+                <button class="profile-dropdown-item logout" id="logoutBtn">Log Out</button>
+            </div>
         </div>
     </nav>
     <div class="container">
@@ -60,6 +64,31 @@
         </div>
     </div>
 
+    <script src="static/js/auth.js"></script>
+    <script>
+        if (Auth.requireAuth()) {
+            document.body.style.visibility = 'visible';
+            Auth.updateProfileButton();
+
+            const user = Auth.getUser();
+            const profileName = document.getElementById('profileName');
+            if (user) profileName.textContent = user.name;
+
+            document.getElementById('profileBtn').addEventListener('click', () => {
+                document.getElementById('profileDropdown').classList.toggle('open');
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.nav-profile')) {
+                    document.getElementById('profileDropdown').classList.remove('open');
+                }
+            });
+
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                Auth.logout();
+            });
+        }
+    </script>
     <script src="static/js/chart.js"></script>
     <script src="static/js/chat.js"></script>
 </body>
