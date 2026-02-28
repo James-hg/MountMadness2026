@@ -1,10 +1,23 @@
+from contextlib import asynccontextmanager
+
+import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import httpx
 
 from .config import settings
+from .database import close_db_pool, init_db_pool
+from .transactions import router as transactions_router
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await init_db_pool()
+    yield
+    await close_db_pool()
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app.include_router(transactions_router)
 
 
 class PromptRequest(BaseModel):
