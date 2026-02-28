@@ -1,0 +1,5 @@
+-- Run all DB migrations in the correct order.
+\ir 001_auth_schema.sql
+\ir 002_categories_schema.sql
+\ir 003_transactions_schema.sql
+\ir 004_seed_dev_admin.sql
