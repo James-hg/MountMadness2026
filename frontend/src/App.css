@@ -80,6 +80,8 @@ body {
 /* ── Left Panel: Graph ── */
 .graph-panel {
     flex: 8;
+    height: 55vh;
+    max-height: 55vh;
     background: #fff;
     border: 2px solid #222;
     border-radius: 12px;
@@ -102,34 +104,34 @@ body {
 }
 
 .weekly-spending {
-    margin-bottom: 8px;
-    padding-bottom: 8px;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
     border-bottom: 1px solid #e0e0e0;
 }
 
 .weekly-spending h3 {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: #555;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 
 .spending-amount {
-    font-size: 1.2rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: #e74c3c;
 }
 
 .spending-details {
     display: flex;
-    gap: 16px;
-    margin-top: 4px;
+    gap: 12px;
+    margin-top: 2px;
 }
 
 .detail-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
+    gap: 4px;
+    font-size: 0.7rem;
     color: #666;
 }
 
