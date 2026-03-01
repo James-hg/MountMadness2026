@@ -10,6 +10,7 @@ import BudgetPage from './components/BudgetPage';
 import SettingsPage from './components/SettingsPage';
 import CategoriesPage from './components/CategoriesPage';
 import CalendarPage from './components/CalendarPage';
+import StatementUploadPage from './components/StatementUploadPage';
 import ChatWidget from './components/ChatWidget';
 
 function AppShell() {
@@ -68,6 +69,14 @@ function AppShell() {
           element={
             <ProtectedRoute>
               <CategoriesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/import"
+          element={
+            <ProtectedRoute>
+              <StatementUploadPage />
             </ProtectedRoute>
           }
         />

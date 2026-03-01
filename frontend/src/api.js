@@ -109,6 +109,18 @@ export async function apiPost(path, body) {
   return res.json();
 }
 
+export async function apiUpload(path, formData) {
+  const res = await request(path, {
+    method: 'POST',
+    // Do NOT set Content-Type — browser sets it automatically with multipart boundary
+    body: formData,
+  });
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  return res.json();
+}
+
 export async function apiPatch(path, body) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'PATCH',

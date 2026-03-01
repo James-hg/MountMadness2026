@@ -102,6 +102,24 @@ class TransactionUploadResponse(BaseModel):
     def serialize_amount(self, value: Decimal) -> str:
         return _money(value)
 
+class StatementTransactionItem(BaseModel):
+    # For one extracted transaction from a statement
+    merchant: str
+    amount: Amount
+    occurred_on: date
+
+    @field_serializer("amount")
+    def serialize_amount(self, value: Decimal) -> str:
+        return _money(value)
+
+
+class StatementUploadResponse(BaseModel):
+    extracted_transactions: list[StatementTransactionItem]
+    all_expense_categories: list[CategoryOut]
+
+class BulkTransactionCreate(BaseModel):
+    transactions: list[TransactionCreate]
+
 
 class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]
@@ -286,6 +304,67 @@ async def create_transaction(
 
     return TransactionResponse.model_validate(row)
 
+@router.post("/transactions/bulk", status_code=201)
+async def create_bulk_transactions(
+    payload: BulkTransactionCreate,
+    user_id: UUID = Depends(get_current_user_id),
+    connection: AsyncConnection = Depends(get_db_connection),
+):
+    """Creates multiple transactions in a single database transaction."""
+    if not payload.transactions:
+        return {"created_count": 0, "message": "No transactions to create."}
+
+    # 1. Validate all categories in one go for efficiency
+    category_ids = {t.category_id for t in payload.transactions}
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            "SELECT id, kind, is_system, user_id FROM categories WHERE id = ANY(%s)",
+            (list(category_ids),),
+        )
+        rows = await cursor.fetchall()
+
+    valid_categories = {row['id']: row for row in rows}
+
+    # Check for missing or forbidden categories
+    for t in payload.transactions:
+        cat_id = t.category_id
+        if cat_id not in valid_categories:
+            raise HTTPException(status_code=404, detail=f"Category with ID {cat_id} not found.")
+        
+        cat = valid_categories[cat_id]
+        if not cat['is_system'] and cat['user_id'] != user_id:
+            raise HTTPException(status_code=403, detail=f"Forbidden access to category {cat_id}.")
+        
+        # Check for type mismatch
+        if cat['kind'] != t.type:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Category '{cat['name']}' kind ({cat['kind']}) and transaction type '{t.type}' mismatch."
+            )
+
+    # 2. Prepare data for bulk insert
+    insert_data = [
+        (user_id, t.category_id, t.type, t.amount, t.occurred_on, t.merchant, t.note)
+        for t in payload.transactions
+    ]
+
+    # 3. Perform bulk insert within a single database transaction
+    try:
+        async with connection.transaction():
+            async with connection.cursor() as cursor:
+                # Use executemany for efficient bulk insertion
+                await cursor.executemany(
+                    """
+                    INSERT INTO transactions (user_id, category_id, type, amount, occurred_on, merchant, note)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    insert_data,
+                )
+        return {"created_count": len(insert_data)}
+    except Exception as e:
+        # Consider logging the full error here
+        raise HTTPException(status_code=500, detail=f"Database bulk insert failed.")
+
 
 @router.post("/transactions/upload", response_model=TransactionUploadResponse, status_code=200)
 async def upload_transaction_receipt(
@@ -371,11 +450,11 @@ async def upload_transaction_receipt(
         text_resp = ai_data["candidates"][0]["content"]["parts"][0]["text"]
         # Strip markdown code blocks if present
         if "```json" in text_resp:
-            text_resp = text_resp.split("```json")[1].split("```")[0]
+            text_resp = text_resp.split("```json")[1].split("```").strip()
         elif "```" in text_resp:
-            text_resp = text_resp.split("```")[1].split("```")[0]
+            text_resp = text_resp.split("```")[1].strip()
         
-        extracted = json.loads(text_resp)
+        extracted = json.loads(text_resp.strip())
         
         merchant = extracted.get("merchant", "Unknown Merchant")
         amount = Decimal(str(extracted.get("amount", 0)))
@@ -400,6 +479,98 @@ async def upload_transaction_receipt(
         note="Imported from receipt",
         all_expense_categories=all_expense_categories,
     )
+
+@router.post("/transactions/upload-statement", response_model=StatementUploadResponse, status_code=200)
+async def upload_bank_statement(
+    file: UploadFile = File(...),
+    user_id: UUID = Depends(get_current_user_id),
+    connection: AsyncConnection = Depends(get_db_connection),
+) -> StatementUploadResponse:
+    if not settings.gemini_api_key:
+        raise HTTPException(status_code=501, detail="Gemini API key is not configured")
+
+    if file.content_type not in ["application/pdf", "image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and Images are supported.")
+
+    file_content = await file.read()
+    encoded_data = base64.b64encode(file_content).decode("utf-8")
+
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            SELECT id, user_id, name, slug, kind, icon, color, is_system, created_at
+            FROM categories 
+            WHERE (is_system = TRUE OR user_id = %s) AND kind = 'expense'
+            ORDER BY name
+            """,
+            (user_id,)
+        )
+        cat_rows = await cursor.fetchall()
+    
+    all_expense_categories = [CategoryOut.model_validate(row) for row in cat_rows]
+
+    prompt = f"""
+    Analyze this bank statement document. Identify all individual debit transactions (expenses).
+    For each transaction, extract the following fields.
+    Return a JSON array of objects, with one object per transaction.
+    
+    The JSON schema for each object should be:
+    - "merchant" (string): The name of the merchant or biller.
+    - "date" (string): The transaction date in YYYY-MM-DD format.
+    - "amount" (float): The total amount paid, as a positive number.
+    - "category" (string, optional): If you can identify a category from the following list, include it: [{', '.join(cat.name for cat in all_expense_categories)}]. If unsure, omit this field.
+    
+    Example:
+    [
+      {{ "merchant": "STARBUCKS", "date": "2024-05-20", "amount": 5.75, "category": "Coffee Shops" }},
+      {{ "merchant": "AMAZON.COM", "date": "2024-05-19", "amount": 34.99, "category": "Online Shopping" }},
+    ]
+    
+    Return ONLY the raw JSON array. Do not include any other text or explanations.
+    If no transactions are found, return an empty array [].
+    """
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
+    params = {"key": settings.gemini_api_key}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": file.content_type, "data": encoded_data}}]}]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client: # Increased timeout for larger docs
+            response = await client.post(url, params=params, json=payload)
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"AI provider request failed: {str(exc)}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="AI provider timeout")
+
+    if response.status_code != 200:
+        body = response.text
+        raise HTTPException(status_code=502, detail=f"AI provider error ({response.status_code}): {body}")
+
+    try:
+        ai_data = response.json()
+        text_resp = ai_data["candidates"][0]["content"]["parts"][0]["text"]
+        if "```json" in text_resp:
+            text_resp = text_resp.split("```json")[1].split("```").strip()
+        elif "```" in text_resp:
+            text_resp = text_resp.split("```")[1].strip()
+        
+        extracted_list = json.loads(text_resp)
+        
+        if not isinstance(extracted_list, list):
+            raise ValueError("AI did not return a JSON array.")
+
+        validated_transactions = [StatementTransactionItem.model_validate(item) for item in extracted_list]
+            
+    except (KeyError, IndexError, json.JSONDecodeError, ValueError, Exception) as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract valid data from statement: {str(e)}")
+
+    return StatementUploadResponse(
+        extracted_transactions=validated_transactions,
+        all_expense_categories=all_expense_categories,
+    )
+
 
 
 ALLOWED_SORTS = {
