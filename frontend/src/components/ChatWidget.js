@@ -242,8 +242,8 @@ export default function ChatWidget() {
       const result = await sendChatMessage({ message: text, conversationId, storageScope });
       appendAssistantMessage(result.reply, result.actions);
       setConversationId(result.conversationId || null);
-    } catch {
-      appendAssistantMessage('Something went wrong. Try again.');
+    } catch (err) {
+      appendAssistantMessage(err?.message || 'Something went wrong. Try again.');
     } finally {
       setIsTyping(false);
     }
