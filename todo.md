@@ -8,7 +8,6 @@
 - [x] charts below the dashboard - some wordings on spendings (use ai for emotion)
 - [x] move ai chatbot to popup window (available all pages)
 - [ ] add welcoming message at the top (maybe mainlanding page show for once)
-<<<<<<< HEAD
 - [x] implement AI chatbot functionality
   - [x] add transaction
   - [x] set budgets
@@ -16,16 +15,6 @@
   - [x] give insights
   - [x] give suggestions
   - [x] budget spending assistant
-=======
-- [ ] implement AI chatbot functionality
-  - [ ] add transaction
-  - [ ] update transactions
-  - [ ] set budgets
-  - [ ] apply categories
-  - [ ] give insights
-  - [ ] give suggestions
-  - [ ] budget spending assistank
->>>>>>> master
 
 ### Transactions
 
