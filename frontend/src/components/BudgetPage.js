@@ -35,6 +35,17 @@ function getCategoryColor(name) {
   return CATEGORY_COLORS[name.toLowerCase()] || '#94a3b8';
 }
 
+function getSectionTotals(categories) {
+  const budget = categories.reduce((sum, cat) => sum + Number(cat.limit_amount), 0);
+  const spent = categories.reduce((sum, cat) => sum + Number(cat.spent_amount), 0);
+
+  return {
+    budget,
+    spent,
+    remaining: budget - spent,
+  };
+}
+
 export default function BudgetPage() {
   const [monthStart, setMonthStart] = useState(toMonthStart(new Date()));
   const [budget, setBudget] = useState(null);
@@ -50,6 +61,12 @@ export default function BudgetPage() {
   const [savingCatId, setSavingCatId] = useState(null);
   const [focusedCatId, setFocusedCatId] = useState(null);
   const originalLimits = useRef({});
+
+  // Income target form
+  const [showIncomeForm, setShowIncomeForm] = useState(false);
+  const [incomeCategories_all, setIncomeCategories_all] = useState([]);
+  const [selectedIncomeCatId, setSelectedIncomeCatId] = useState('');
+  const [incomeTargetAmount, setIncomeTargetAmount] = useState('');
 
   // Recurring rules
   const [recurringRules, setRecurringRules] = useState([]);
@@ -71,7 +88,7 @@ export default function BudgetPage() {
       }
       // Initialize per-category limits (always store originals as dollars)
       const dollarLimits = {};
-      for (const cat of data.category_budgets || []) {
+      for (const cat of [...(data.category_budgets || []), ...(data.income_budgets || [])]) {
         dollarLimits[cat.category_id] = cat.limit_amount;
       }
       originalLimits.current = { ...dollarLimits };
@@ -116,7 +133,7 @@ export default function BudgetPage() {
       setBudget(data);
       if (data.total_budget_amount) setTotalInput(data.total_budget_amount);
       const dollarLimits = {};
-      for (const cat of data.category_budgets || []) {
+      for (const cat of [...(data.category_budgets || []), ...(data.income_budgets || [])]) {
         dollarLimits[cat.category_id] = cat.limit_amount;
       }
       originalLimits.current = { ...dollarLimits };
@@ -139,6 +156,18 @@ export default function BudgetPage() {
 
   const handleLimitChange = (catId, value) => {
     setLimits((prev) => ({ ...prev, [catId]: value }));
+  };
+
+  const handleLimitCancel = (catId) => {
+    const origVal = originalLimits.current[catId];
+    setLimits((prev) => ({ ...prev, [catId]: toDisplayValue(origVal) }));
+  };
+
+  const isLimitChanged = (catId) => {
+    const current = limits[catId];
+    const orig = originalLimits.current[catId];
+    if (current === undefined || orig === undefined) return false;
+    return String(current) !== String(toDisplayValue(orig));
   };
 
   const toLimitDollar = (catId) => {
@@ -236,7 +265,7 @@ export default function BudgetPage() {
       setBudget(data);
       if (data.total_budget_amount) setTotalInput(data.total_budget_amount);
       const dollarLimits = {};
-      for (const cat of data.category_budgets || []) {
+      for (const cat of [...(data.category_budgets || []), ...(data.income_budgets || [])]) {
         dollarLimits[cat.category_id] = cat.limit_amount;
       }
       originalLimits.current = { ...dollarLimits };
@@ -250,6 +279,38 @@ export default function BudgetPage() {
       } else {
         setLimits(dollarLimits);
       }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Fetch income categories for the "Add Income Target" dropdown
+  useEffect(() => {
+    apiGet('/categories').then((cats) => {
+      setIncomeCategories_all(cats.filter(c => c.kind === 'income'));
+    }).catch(() => setIncomeCategories_all([]));
+  }, []);
+
+  const handleAddIncomeTarget = async (e) => {
+    e.preventDefault();
+    if (!selectedIncomeCatId || !incomeTargetAmount || Number(incomeTargetAmount) <= 0) {
+      setError('Select a category and enter a positive amount.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await apiPut('/budget/category', {
+        month_start: monthStart,
+        category_id: selectedIncomeCatId,
+        limit_amount: Number(incomeTargetAmount).toFixed(2),
+      });
+      setSelectedIncomeCatId('');
+      setIncomeTargetAmount('');
+      setShowIncomeForm(false);
+      await fetchBudget();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -302,8 +363,64 @@ export default function BudgetPage() {
   const unallocated = totalBudget - totalAllocated;
   const fixedCategories = categories.filter(c => c.is_fixed);
   const flexibleCategories = categories.filter(c => !c.is_fixed);
+  const fixedTotals = getSectionTotals(fixedCategories);
+  const flexibleTotals = getSectionTotals(flexibleCategories);
+  const incomeCategories = budget?.income_budgets || [];
+  const fixedIncome = incomeCategories.filter(c => c.is_fixed);
+  const flexibleIncome = incomeCategories.filter(c => !c.is_fixed);
   const hasBudget = budget?.total_budget_amount != null;
   const spentRatio = totalBudget > 0 ? totalSpent / totalBudget : 0;
+
+  const renderSectionHeader = ({ title, subtitle, totals, labels, showModeToggle = true }) => {
+    const budgetLabel = labels?.budget || 'Budget';
+    const spentLabel = labels?.spent || 'Spent';
+    const defaultRemainingLabel = totals.remaining >= 0 ? 'Left' : 'Over';
+    const remainingLabel = labels?.remaining || defaultRemainingLabel;
+    const remainingValue = Math.abs(totals.remaining).toFixed(2);
+    const remainingClass = totals.remaining >= 0 ? 'positive' : 'negative';
+    const spentClass = labels?.spentClass || 'spent';
+
+    return (
+      <div className="budget-card-header">
+        <div className="budget-card-title-group">
+          <h2 className="card-title">{title}</h2>
+          {subtitle && <span className="budget-section-subtitle">{subtitle}</span>}
+        </div>
+        <div className="budget-section-summary" aria-label={`${title} totals`}>
+          <div className="budget-section-stat">
+            <span className="budget-section-stat-label">{budgetLabel}</span>
+            <span className="budget-section-stat-value">
+              ${totals.budget.toFixed(2)}
+            </span>
+          </div>
+          <div className="budget-section-stat">
+            <span className="budget-section-stat-label">{spentLabel}</span>
+            <span className={`budget-section-stat-value ${spentClass}`}>
+              ${totals.spent.toFixed(2)}
+            </span>
+          </div>
+          <div className="budget-section-stat">
+            <span className="budget-section-stat-label">{remainingLabel}</span>
+            <span className={`budget-section-stat-value ${remainingClass}`}>
+              ${remainingValue}
+            </span>
+          </div>
+        </div>
+        {showModeToggle && (
+          <div className="budget-mode-toggle">
+            <button
+              className={`budget-mode-btn${allocMode === 'dollar' ? ' active' : ''}`}
+              onClick={() => handleModeSwitch('dollar')}
+            >$</button>
+            <button
+              className={`budget-mode-btn${allocMode === 'percent' ? ' active' : ''}`}
+              onClick={() => handleModeSwitch('percent')}
+            >%</button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderBudgetItem = (cat) => {
     const limit = Number(cat.limit_amount);
@@ -352,12 +469,19 @@ export default function BudgetPage() {
             value={limits[cat.category_id] ?? ''}
             onChange={(e) => handleLimitChange(cat.category_id, e.target.value)}
             onFocus={() => setFocusedCatId(cat.category_id)}
-            onBlur={() => { setFocusedCatId(null); handleLimitSave(cat.category_id); }}
+            onBlur={() => setFocusedCatId(null)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.target.blur(); }
+              if (e.key === 'Enter') { handleLimitSave(cat.category_id); e.target.blur(); }
+              if (e.key === 'Escape') { handleLimitCancel(cat.category_id); e.target.blur(); }
             }}
             disabled={isSaving}
           />
+          {isLimitChanged(cat.category_id) && !isSaving && (
+            <div className="budget-limit-actions">
+              <button className="budget-limit-save-btn" onClick={() => handleLimitSave(cat.category_id)}>Save</button>
+              <button className="budget-limit-cancel-btn" onClick={() => handleLimitCancel(cat.category_id)}>Cancel</button>
+            </div>
+          )}
           {isSaving && <span className="budget-saving-indicator">saving...</span>}
           <span className="budget-available-label">
             {focusedCatId === cat.category_id
@@ -380,6 +504,83 @@ export default function BudgetPage() {
             />
           </div>
           <span className="budget-percent">{pct}% used</span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderIncomeItem = (cat) => {
+    const expected = Number(cat.limit_amount);
+    const received = Number(cat.spent_amount);
+    const remaining = expected - received;
+    const pct = expected > 0 ? Math.round((received / expected) * 100) : (received > 0 ? 100 : 0);
+    const barWidth = Math.min(pct, 100);
+    const isSaving = savingCatId === cat.category_id;
+    const catColor = '#2ecc71';
+
+    return (
+      <div key={cat.category_id} className="budget-item">
+        <div className="budget-item-header">
+          <span className="budget-category">
+            <span className="budget-category-dot" style={{ backgroundColor: catColor }} />
+            {cat.category_name}
+            {cat.is_user_modified && <span className="budget-modified-badge">edited</span>}
+            <button
+              className={`fixed-toggle-btn${cat.is_fixed ? ' active' : ''}`}
+              onClick={() => toggleFixed(cat.category_id, cat.is_fixed)}
+              title={cat.is_fixed ? 'Unmark as fixed' : 'Mark as fixed income'}
+            >
+              {cat.is_fixed ? '\u{1F4CC}' : '\u{1F4CD}'}
+            </button>
+          </span>
+          <div className="budget-amounts-group">
+            <span className="budget-amounts" style={{ color: '#2ecc71' }}>
+              +${received.toFixed(2)}
+            </span>
+            <span className="budget-amounts" style={{ color: remaining > 0 ? '#888' : '#2ecc71' }}>
+              {remaining > 0 ? `$${remaining.toFixed(2)} pending` : 'Received'}
+            </span>
+          </div>
+        </div>
+        <div className="budget-allocator-row">
+          <label className="budget-allocator-label">Expected</label>
+          <input
+            className="budget-limit-input"
+            type="number"
+            step="0.01"
+            min="0"
+            value={limits[cat.category_id] ?? ''}
+            onChange={(e) => handleLimitChange(cat.category_id, e.target.value)}
+            onFocus={() => setFocusedCatId(cat.category_id)}
+            onBlur={() => setFocusedCatId(null)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { handleLimitSave(cat.category_id); e.target.blur(); }
+              if (e.key === 'Escape') { handleLimitCancel(cat.category_id); e.target.blur(); }
+            }}
+            disabled={isSaving}
+          />
+          {isLimitChanged(cat.category_id) && !isSaving && (
+            <div className="budget-limit-actions">
+              <button className="budget-limit-save-btn" onClick={() => handleLimitSave(cat.category_id)}>Save</button>
+              <button className="budget-limit-cancel-btn" onClick={() => handleLimitCancel(cat.category_id)}>Cancel</button>
+            </div>
+          )}
+          {isSaving && <span className="budget-saving-indicator">saving...</span>}
+          <span className="budget-available-label">
+            {remaining > 0 ? `$${remaining.toFixed(2)} pending` : 'Fully received'}
+          </span>
+        </div>
+        <div className="budget-progress-row">
+          <div className="progress-bar">
+            <div
+              className="progress-fill"
+              style={{
+                width: `${barWidth}%`,
+                backgroundColor: '#2ecc71',
+              }}
+            />
+          </div>
+          <span className="budget-percent">{pct}% received</span>
         </div>
       </div>
     );
@@ -473,20 +674,11 @@ export default function BudgetPage() {
         {/* Fixed Expenses */}
         {hasBudget && fixedCategories.length > 0 && (
           <div className="budget-categories-card">
-            <div className="budget-card-header">
-              <h2 className="card-title">Fixed Expenses</h2>
-              <span className="budget-section-subtitle">Auto-carried forward each month</span>
-              <div className="budget-mode-toggle">
-                <button
-                  className={`budget-mode-btn${allocMode === 'dollar' ? ' active' : ''}`}
-                  onClick={() => handleModeSwitch('dollar')}
-                >$</button>
-                <button
-                  className={`budget-mode-btn${allocMode === 'percent' ? ' active' : ''}`}
-                  onClick={() => handleModeSwitch('percent')}
-                >%</button>
-              </div>
-            </div>
+            {renderSectionHeader({
+              title: 'Fixed Expenses',
+              subtitle: 'Auto-carried forward each month',
+              totals: fixedTotals,
+            })}
             <div className="budget-list">
               {fixedCategories.map((cat) => renderBudgetItem(cat))}
             </div>
@@ -496,19 +688,10 @@ export default function BudgetPage() {
         {/* Flexible Expenses */}
         {hasBudget && flexibleCategories.length > 0 && (
           <div className="budget-categories-card">
-            <div className="budget-card-header">
-              <h2 className="card-title">Flexible Expenses</h2>
-              <div className="budget-mode-toggle">
-                <button
-                  className={`budget-mode-btn${allocMode === 'dollar' ? ' active' : ''}`}
-                  onClick={() => handleModeSwitch('dollar')}
-                >$</button>
-                <button
-                  className={`budget-mode-btn${allocMode === 'percent' ? ' active' : ''}`}
-                  onClick={() => handleModeSwitch('percent')}
-                >%</button>
-              </div>
-            </div>
+            {renderSectionHeader({
+              title: 'Flexible Expenses',
+              totals: flexibleTotals,
+            })}
             <div className="budget-list">
               {flexibleCategories.map((cat) => renderBudgetItem(cat))}
             </div>
@@ -534,6 +717,77 @@ export default function BudgetPage() {
             <div className="budget-list">
               {categories.map((cat) => renderBudgetItem(cat))}
             </div>
+          </div>
+        )}
+
+        {/* Fixed Income */}
+        {hasBudget && fixedIncome.length > 0 && (
+          <div className="budget-categories-card">
+            {renderSectionHeader({
+              title: 'Fixed Income',
+              subtitle: 'Auto-carried forward each month',
+              totals: getSectionTotals(fixedIncome),
+              labels: { budget: 'Expected', spent: 'Received', remaining: 'Pending', spentClass: 'positive' },
+              showModeToggle: false,
+            })}
+            <div className="budget-list">
+              {fixedIncome.map((cat) => renderIncomeItem(cat))}
+            </div>
+          </div>
+        )}
+
+        {/* Expected Income */}
+        {hasBudget && flexibleIncome.length > 0 && (
+          <div className="budget-categories-card">
+            {renderSectionHeader({
+              title: 'Expected Income',
+              totals: getSectionTotals(flexibleIncome),
+              labels: { budget: 'Expected', spent: 'Received', remaining: 'Pending', spentClass: 'positive' },
+              showModeToggle: false,
+            })}
+            <div className="budget-list">
+              {flexibleIncome.map((cat) => renderIncomeItem(cat))}
+            </div>
+          </div>
+        )}
+
+        {/* Add Income Target */}
+        {hasBudget && (
+          <div style={{ marginBottom: 16 }}>
+            {!showIncomeForm ? (
+              <button className="primary-btn" onClick={() => setShowIncomeForm(true)} style={{ fontSize: '0.85rem', padding: '8px 16px' }}>
+                + Add Income Target
+              </button>
+            ) : (
+              <div className="budget-categories-card">
+                <div className="budget-card-header">
+                  <h2 className="card-title">Add Income Target</h2>
+                </div>
+                <form onSubmit={handleAddIncomeTarget} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', padding: '8px 0' }}>
+                  <div className="form-group" style={{ marginBottom: 0, minWidth: 160, flex: 1 }}>
+                    <label>Category</label>
+                    <select className="form-select" value={selectedIncomeCatId} onChange={(e) => setSelectedIncomeCatId(e.target.value)}>
+                      <option value="">Select income category...</option>
+                      {incomeCategories_all
+                        .filter(c => !incomeCategories.some(ic => ic.category_id === c.id))
+                        .map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0, minWidth: 120 }}>
+                    <label>Expected Amount</label>
+                    <input type="number" step="0.01" min="0.01" value={incomeTargetAmount} onChange={(e) => setIncomeTargetAmount(e.target.value)} placeholder="0.00" />
+                  </div>
+                  <button className="primary-btn" type="submit" disabled={saving} style={{ fontSize: '0.85rem', padding: '8px 16px' }}>
+                    {saving ? 'Saving...' : 'Add'}
+                  </button>
+                  <button type="button" className="budget-limit-cancel-btn" onClick={() => { setShowIncomeForm(false); setSelectedIncomeCatId(''); setIncomeTargetAmount(''); }} style={{ padding: '8px 16px' }}>
+                    Cancel
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         )}
 

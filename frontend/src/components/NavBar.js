@@ -27,7 +27,9 @@ export default function NavBar() {
 
   return (
     <nav className="top-nav">
-      <div className="nav-logo"></div>
+      <div className="nav-logo">
+        <img src="/MountainFinance.png" alt="Mountain Finance" className="nav-logo-img" />
+      </div>
       <button className="nav-hamburger" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
         <span /><span /><span />
       </button>
