@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { sendChatMessage } from '../services/chatClient';
+import { getStoredConversationId, sendChatMessage } from '../services/chatClient';
 
 const STORAGE_OPEN = 'mm_chat_widget_open';
 const STORAGE_MESSAGES = 'mm_chat_widget_messages';
@@ -18,6 +18,7 @@ function createMessage(role, content) {
     role,
     content,
     createdAt: new Date().toISOString(),
+    actions: [],
   };
 }
 
@@ -43,6 +44,15 @@ function readMessages() {
         role: item?.role === 'assistant' ? 'assistant' : 'user',
         content: String(item?.content || ''),
         createdAt: String(item?.createdAt || ''),
+        actions: Array.isArray(item?.actions)
+          ? item.actions
+            .map((action) => ({
+              tool: String(action?.tool || ''),
+              kind: String(action?.kind || ''),
+              summary: String(action?.summary || ''),
+            }))
+            .filter((action) => action.summary)
+          : [],
       }))
       .filter((item) => item.id && item.content && (item.role === 'assistant' || item.role === 'user'));
   } catch {
@@ -102,6 +112,7 @@ export default function ChatWidget() {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
+  const [conversationId, setConversationId] = useState(() => getStoredConversationId());
 
   const panelRef = useRef(null);
   const inputRef = useRef(null);
@@ -190,8 +201,11 @@ export default function ChatWidget() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [isOpen, isTyping, messages]);
 
-  const appendAssistantMessage = (content) => {
-    const assistantMessage = createMessage('assistant', content);
+  const appendAssistantMessage = (content, actions = []) => {
+    const assistantMessage = {
+      ...createMessage('assistant', content),
+      actions: Array.isArray(actions) ? actions : [],
+    };
     setMessages((prev) => [...prev, assistantMessage]);
     if (!openRef.current) {
       setUnread(true);
@@ -203,8 +217,6 @@ export default function ChatWidget() {
     if (!text || isTyping) return;
 
     const userMessage = createMessage('user', text);
-    const nextHistory = [...messages, userMessage];
-
     setMessages((prev) => [...prev, userMessage]);
     if (sourceText == null) {
       setInput('');
@@ -212,8 +224,9 @@ export default function ChatWidget() {
     setIsTyping(true);
 
     try {
-      const reply = await sendChatMessage({ message: text, history: nextHistory });
-      appendAssistantMessage(reply);
+      const result = await sendChatMessage({ message: text, conversationId });
+      appendAssistantMessage(result.reply, result.actions);
+      setConversationId(result.conversationId || null);
     } catch {
       appendAssistantMessage('Something went wrong. Try again.');
     } finally {
@@ -304,6 +317,13 @@ export default function ChatWidget() {
                   className={`chat-widget-message ${message.role === 'assistant' ? 'chat-widget-message--assistant' : 'chat-widget-message--user'}`}
                 >
                   <p>{message.content}</p>
+                  {message.role === 'assistant' && message.actions?.length > 0 && (
+                    <ul className="chat-widget-action-list">
+                      {message.actions.map((action, index) => (
+                        <li key={`${message.id}-action-${index}`}>{action.summary}</li>
+                      ))}
+                    </ul>
+                  )}
                   <span className="chat-widget-message-time">{formatTime(message.createdAt)}</span>
                 </div>
               ))}
