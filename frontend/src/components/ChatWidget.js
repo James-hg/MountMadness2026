@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getStoredConversationId, sendChatMessage } from '../services/chatClient';
+import { useAuth } from '../context/AuthContext';
+import { getChatStorageScope, getStoredConversationId, sendChatMessage } from '../services/chatClient';
 
-const STORAGE_OPEN = 'mm_chat_widget_open';
-const STORAGE_MESSAGES = 'mm_chat_widget_messages';
-const STORAGE_UNREAD = 'mm_chat_widget_unread';
+const STORAGE_PREFIX = 'mm_chat_widget';
 
 const SUGGESTION_PROMPTS = [
   'How much did I spend this month?',
@@ -32,9 +31,9 @@ function readBool(key, fallback) {
   }
 }
 
-function readMessages() {
+function readMessages(key) {
   try {
-    const raw = localStorage.getItem(STORAGE_MESSAGES);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -106,13 +105,19 @@ function TypingIndicator() {
 }
 
 export default function ChatWidget() {
-  const [isOpen, setIsOpen] = useState(() => readBool(STORAGE_OPEN, false));
-  const [messages, setMessages] = useState(() => readMessages());
-  const [unread, setUnread] = useState(() => readBool(STORAGE_UNREAD, false));
+  const { user } = useAuth();
+  const storageScope = useMemo(() => getChatStorageScope(user), [user?.id, user?.email]);
+  const storageOpenKey = `${STORAGE_PREFIX}_open:${storageScope}`;
+  const storageMessagesKey = `${STORAGE_PREFIX}_messages:${storageScope}`;
+  const storageUnreadKey = `${STORAGE_PREFIX}_unread:${storageScope}`;
+
+  const [isOpen, setIsOpen] = useState(() => readBool(storageOpenKey, false));
+  const [messages, setMessages] = useState(() => readMessages(storageMessagesKey));
+  const [unread, setUnread] = useState(() => readBool(storageUnreadKey, false));
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
-  const [conversationId, setConversationId] = useState(() => getStoredConversationId());
+  const [conversationId, setConversationId] = useState(() => getStoredConversationId(storageScope));
 
   const panelRef = useRef(null);
   const inputRef = useRef(null);
@@ -126,16 +131,26 @@ export default function ChatWidget() {
   }, [isOpen]);
 
   useEffect(() => {
-    writeStorage(STORAGE_OPEN, isOpen ? 'true' : 'false');
-  }, [isOpen]);
+    writeStorage(storageOpenKey, isOpen ? 'true' : 'false');
+  }, [isOpen, storageOpenKey]);
 
   useEffect(() => {
-    writeStorage(STORAGE_MESSAGES, JSON.stringify(messages));
-  }, [messages]);
+    writeStorage(storageMessagesKey, JSON.stringify(messages));
+  }, [messages, storageMessagesKey]);
 
   useEffect(() => {
-    writeStorage(STORAGE_UNREAD, unread ? 'true' : 'false');
-  }, [unread]);
+    writeStorage(storageUnreadKey, unread ? 'true' : 'false');
+  }, [unread, storageUnreadKey]);
+
+  useEffect(() => {
+    // Reload widget state when account scope changes.
+    setIsOpen(readBool(storageOpenKey, false));
+    setMessages(readMessages(storageMessagesKey));
+    setUnread(readBool(storageUnreadKey, false));
+    setConversationId(getStoredConversationId(storageScope));
+    setInput('');
+    setIsTyping(false);
+  }, [storageOpenKey, storageMessagesKey, storageUnreadKey, storageScope]);
 
   useEffect(() => {
     if (isOpen) {
@@ -224,7 +239,7 @@ export default function ChatWidget() {
     setIsTyping(true);
 
     try {
-      const result = await sendChatMessage({ message: text, conversationId });
+      const result = await sendChatMessage({ message: text, conversationId, storageScope });
       appendAssistantMessage(result.reply, result.actions);
       setConversationId(result.conversationId || null);
     } catch {

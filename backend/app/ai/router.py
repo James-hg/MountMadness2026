@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import date, datetime
 from decimal import Decimal
@@ -27,6 +28,7 @@ from app.database import get_db_connection
 router = APIRouter(prefix="/ai", tags=["ai"])
 
 MAX_TOOL_ROUNDS = 4
+WRITE_TOOL_NAMES = {"create_transaction", "apply_budget_plan"}
 
 
 class AIChatRequest(BaseModel):
@@ -66,6 +68,18 @@ def _get_gemini_client() -> GeminiClient:
         api_key=settings.gemini_api_key,
         model=settings.gemini_model,
     )
+
+
+def _tool_call_fingerprint(tool_name: str, args: dict[str, Any]) -> str:
+    """
+    Build a stable fingerprint for one tool call.
+
+    Used to prevent duplicate write execution when model emits the same tool call
+    multiple times in a single `/ai/chat` request.
+    """
+    canonical_args = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
+    digest = hashlib.sha256(f"{tool_name}:{canonical_args}".encode("utf-8")).hexdigest()
+    return digest
 
 
 @router.post("/chat", response_model=AIChatResponse)
@@ -132,6 +146,7 @@ async def ai_chat(
     client = _get_gemini_client()
     schemas = tool_schemas()
     actions: list[dict[str, Any]] = []
+    executed_write_calls: dict[str, dict[str, Any]] = {}
 
     final_reply = ""
     try:
@@ -144,26 +159,44 @@ async def ai_chat(
 
             if result.tool_calls:
                 for call in result.tool_calls:
-                    try:
-                        tool_result = await dispatch_tool(
-                            connection,
-                            user_id,
-                            call.name,
-                            call.arguments,
-                        )
-                    except (ToolArgumentError, ValueError) as exc:
-                        final_reply = (
-                            "I need a bit more detail before I can do that: "
-                            f"{str(exc)}"
-                        )
-                        break
+                    call_fingerprint = _tool_call_fingerprint(call.name, call.arguments)
+                    duplicate_write_call = False
+
+                    # Idempotency guard: never run identical writes twice in one turn.
+                    if call.name in WRITE_TOOL_NAMES and call_fingerprint in executed_write_calls:
+                        duplicate_write_call = True
+                        previous = executed_write_calls[call_fingerprint]
+                        tool_result = {
+                            "kind": previous["kind"],
+                            "summary": f"Skipped duplicate {call.name} call in this request; write already applied once.",
+                            "data": previous["data"],
+                        }
+                    else:
+                        try:
+                            tool_result = await dispatch_tool(
+                                connection,
+                                user_id,
+                                call.name,
+                                call.arguments,
+                            )
+                        except (ToolArgumentError, ValueError) as exc:
+                            final_reply = (
+                                "I need a bit more detail before I can do that: "
+                                f"{str(exc)}"
+                            )
+                            break
+
+                        if call.name in WRITE_TOOL_NAMES and tool_result["kind"] == "write":
+                            executed_write_calls[call_fingerprint] = tool_result
 
                     action = {
                         "tool": call.name,
                         "kind": tool_result["kind"],
                         "summary": tool_result["summary"],
                     }
-                    actions.append(action)
+                    # Keep action list clean: only show one entry for deduped write calls.
+                    if not duplicate_write_call:
+                        actions.append(action)
 
                     tool_payload = {
                         "tool": call.name,

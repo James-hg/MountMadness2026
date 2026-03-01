@@ -16,6 +16,13 @@ function saveSession(data) {
 }
 
 function clearSession() {
+  try {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('mm_chat_widget_'))
+      .forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Ignore storage errors.
+  }
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');

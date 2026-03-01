@@ -1,27 +1,38 @@
 import { apiPost } from '../api';
 
-const STORAGE_CONVERSATION_ID = 'mm_chat_widget_conversation_id';
+const STORAGE_PREFIX = 'mm_chat_widget';
+const LEGACY_STORAGE_CONVERSATION_ID = 'mm_chat_widget_conversation_id';
 
-function readConversationId() {
+function conversationKey(scope) {
+  return `${STORAGE_PREFIX}_conversation_id:${scope}`;
+}
+
+export function getChatStorageScope(user) {
+  if (user?.id) return `user:${String(user.id)}`;
+  if (user?.email) return `email:${String(user.email).toLowerCase()}`;
+  return 'anon';
+}
+
+function readConversationId(scope) {
   try {
-    const raw = localStorage.getItem(STORAGE_CONVERSATION_ID);
+    const raw = localStorage.getItem(conversationKey(scope));
     return raw && raw.trim() ? raw.trim() : null;
   } catch {
     return null;
   }
 }
 
-function writeConversationId(conversationId) {
+function writeConversationId(scope, conversationId) {
   try {
     if (conversationId) {
-      localStorage.setItem(STORAGE_CONVERSATION_ID, conversationId);
+      localStorage.setItem(conversationKey(scope), conversationId);
     }
   } catch {
     // Ignore storage failures.
   }
 }
 
-export async function sendChatMessage({ message, conversationId = null }) {
+export async function sendChatMessage({ message, conversationId = null, storageScope = 'anon' }) {
   const trimmed = String(message || '').trim();
   if (!trimmed) {
     throw new Error('Message is empty.');
@@ -29,7 +40,7 @@ export async function sendChatMessage({ message, conversationId = null }) {
 
   const payload = {
     message: trimmed,
-    conversation_id: conversationId || readConversationId(),
+    conversation_id: conversationId || readConversationId(storageScope),
   };
 
   const data = await apiPost('/ai/chat', payload);
@@ -41,7 +52,7 @@ export async function sendChatMessage({ message, conversationId = null }) {
 
   const nextConversationId = String(data?.conversation_id || '').trim();
   if (nextConversationId) {
-    writeConversationId(nextConversationId);
+    writeConversationId(storageScope, nextConversationId);
   }
 
   return {
@@ -52,6 +63,28 @@ export async function sendChatMessage({ message, conversationId = null }) {
   };
 }
 
-export function getStoredConversationId() {
-  return readConversationId();
+export function getStoredConversationId(storageScope = 'anon') {
+  return readConversationId(storageScope);
+}
+
+export function clearChatStorageForUser(user) {
+  const scope = getChatStorageScope(user);
+  const scopedKeys = [
+    `${STORAGE_PREFIX}_open:${scope}`,
+    `${STORAGE_PREFIX}_messages:${scope}`,
+    `${STORAGE_PREFIX}_unread:${scope}`,
+    conversationKey(scope),
+  ];
+
+  try {
+    scopedKeys.forEach((key) => localStorage.removeItem(key));
+
+    // Cleanup one-time legacy keys so older shared history is removed.
+    localStorage.removeItem(`${STORAGE_PREFIX}_open`);
+    localStorage.removeItem(`${STORAGE_PREFIX}_messages`);
+    localStorage.removeItem(`${STORAGE_PREFIX}_unread`);
+    localStorage.removeItem(LEGACY_STORAGE_CONVERSATION_ID);
+  } catch {
+    // Ignore storage failures.
+  }
 }

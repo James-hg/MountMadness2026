@@ -199,6 +199,65 @@ def test_ai_chat_invalid_tool_args_returns_clarification(client_with_overrides, 
     assert "I need a bit more detail" in data["reply"]
 
 
+def test_ai_chat_dedupes_duplicate_write_tool_calls(client_with_overrides, monkeypatch) -> None:
+    client, _user_id = client_with_overrides
+    _install_memory_stubs(monkeypatch)
+
+    duplicate_args = {
+        "occurred_on": "2026-03-01",
+        "type": "expense",
+        "amount": 12.5,
+        "category_name": "Food",
+        "merchant": "Cafe",
+    }
+
+    client_stub = StubGeminiClient(
+        [
+            GeminiResult(
+                text_response="",
+                tool_calls=[GeminiToolCall(name="create_transaction", arguments=duplicate_args)],
+            ),
+            GeminiResult(
+                text_response="",
+                tool_calls=[GeminiToolCall(name="create_transaction", arguments=duplicate_args)],
+            ),
+            GeminiResult(text_response="Done. Added your expense.", tool_calls=[]),
+        ]
+    )
+
+    calls = {"count": 0}
+
+    async def fake_dispatch(connection, user_id, tool_name, args):
+        calls["count"] += 1
+        return {
+            "kind": "write",
+            "summary": "Created expense transaction 12.50 for Food on 2026-03-01.",
+            "data": {
+                "created": True,
+                "dry_run": False,
+                "transaction": {
+                    "id": "00000000-0000-0000-0000-000000000001",
+                    "type": "expense",
+                    "amount": "12.50",
+                    "occurred_on": "2026-03-01",
+                    "category_name": "Food",
+                },
+            },
+        }
+
+    monkeypatch.setattr(ai_router, "_get_gemini_client", lambda: client_stub)
+    monkeypatch.setattr(ai_router, "dispatch_tool", fake_dispatch)
+
+    response = client.post("/ai/chat", json={"message": "Add $12.50 coffee yesterday"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reply"] == "Done. Added your expense."
+    assert calls["count"] == 1
+    assert len(data["actions"]) == 1
+    assert data["actions"][0]["tool"] == "create_transaction"
+
+
 def test_ai_chat_requires_auth(monkeypatch) -> None:
     monkeypatch.setattr(ai_router.settings, "gemini_api_key", "test-key")
     test_app = FastAPI()
