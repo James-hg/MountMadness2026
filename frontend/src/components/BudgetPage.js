@@ -20,13 +20,13 @@ function shiftMonth(monthStr, delta) {
 
 const CATEGORY_COLORS = {
   'food': '#f97316',
-  'housing / rent': '#6366f1',
+  'housing / rent': '#2563eb',
   'transport': '#06b6d4',
   'bills / utilities': '#14b8a6',
   'shopping': '#f59e0b',
-  'entertainment': '#a855f7',
+  'entertainment': '#f43f5e',
   'health': '#10b981',
-  'insurance': '#8b5cf6',
+  'insurance': '#0ea5e9',
   'tuition': '#ec4899',
   'other': '#94a3b8',
 };

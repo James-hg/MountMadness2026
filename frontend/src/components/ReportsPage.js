@@ -19,13 +19,13 @@ ChartJS.register(
 
 const CATEGORY_COLORS = {
   'food': '#f97316',
-  'housing / rent': '#6366f1',
+  'housing / rent': '#2563eb',
   'transport': '#06b6d4',
   'bills / utilities': '#14b8a6',
   'shopping': '#f59e0b',
-  'entertainment': '#a855f7',
+  'entertainment': '#f43f5e',
   'health': '#10b981',
-  'insurance': '#8b5cf6',
+  'insurance': '#0ea5e9',
   'tuition': '#ec4899',
   'other': '#94a3b8',
 };
@@ -234,8 +234,8 @@ export default function ReportsPage() {
     datasets: [{
       label: 'Daily Spending',
       data: breakdownItems.map(item => parseFloat(item.expense_amount)),
-      backgroundColor: 'rgba(108, 92, 231, 0.6)',
-      hoverBackgroundColor: 'rgba(108, 92, 231, 0.85)',
+      backgroundColor: 'rgba(13, 148, 136, 0.6)',
+      hoverBackgroundColor: 'rgba(13, 148, 136, 0.85)',
       borderRadius: 4,
       borderSkipped: false,
     }],
