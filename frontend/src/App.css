@@ -73,7 +73,7 @@ body {
 
 .container {
     display: flex;
-    min-height: calc(100vh - 60px);
+    height: calc(100vh - 60px);
     padding: 0 5% 20px 5%;
     gap: 3%;
 }
