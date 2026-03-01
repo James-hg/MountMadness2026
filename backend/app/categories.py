@@ -7,6 +7,7 @@ from app.database import get_db_connection
 from app.auth import get_current_user_id
 from app.utils import slugify
 
+# Category routes support system defaults plus user-owned custom categories.
 router = APIRouter(prefix="/categories", tags=["categories"])
 
 Kind = Literal["income", "expense"]
@@ -43,6 +44,7 @@ def list_categories(
     """
     Returns: (system categories) + (this user's categories)
     """
+    # System categories are globally visible (user_id IS NULL).
     sql = """
     SELECT id, user_id, name, slug, kind, icon, color, is_system, created_at
     FROM categories
@@ -64,6 +66,7 @@ def create_category(payload: CategoryCreate, user_id: str = Depends(get_current_
     """
 
     try: 
+        # Normalize human name into stable slug used by uniqueness constraints.
         slug = slugify(payload.name)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -84,6 +87,7 @@ def create_category(payload: CategoryCreate, user_id: str = Depends(get_current_
                              payload.color.strip() if payload.color else None))
                 return cur.fetchone()
             except psycopg2.errors.UniqueViolation:
+                # Guardrails from DB unique index become client-readable validation error.
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category with the same name already exists.")
             
 
@@ -121,6 +125,7 @@ def update_category(category_id: int, payload: CategoryUpdate, user_id: str = De
                              category_id, user_id))
                 updated_category = cur.fetchone()
                 if not updated_category:
+                    # Includes: non-existent id, different user_id, or system category.
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found or cannot be updated.")
                 return updated_category
     except psycopg2.errors.UniqueViolation:
@@ -131,6 +136,7 @@ def delete_category(category_id: int, user_id: str = Depends(get_current_user_id
     """
     Delete user category. System categories cannot be deleted by users.
     """
+    # Hard delete is allowed only for user-owned non-system categories.
     sql = """
     DELETE FROM categories
     WHERE id = %s AND user_id = %s AND is_system = FALSE
