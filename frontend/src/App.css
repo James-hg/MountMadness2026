@@ -139,22 +139,68 @@ body {
     border-bottom: 1px solid #e0e0e0;
 }
 
+.overview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .weekly-spending h3 {
     font-size: 0.9rem;
     color: #555;
     margin-bottom: 6px;
 }
 
+.range-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.range-btn {
+    border: 1px solid #d7d7d7;
+    border-radius: 999px;
+    background: #fff;
+    color: #555;
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+
+.range-btn:hover {
+    border-color: #6c5ce7;
+    color: #333;
+}
+
+.range-btn.active {
+    border-color: #6c5ce7;
+    background: #efeafe;
+    color: #3e357a;
+}
+
 .spending-amount {
     font-size: 1.3rem;
     font-weight: 700;
-    color: #e74c3c;
+    color: #2b2b2b;
+}
+
+.spending-caption {
+    font-size: 0.78rem;
+    color: #777;
+    margin-top: 2px;
 }
 
 .spending-details {
     display: flex;
     gap: 12px;
     margin-top: 6px;
+    flex-wrap: wrap;
 }
 
 .detail-item {
@@ -175,8 +221,27 @@ body {
     background-color: #2ecc71;
 }
 
+.dot.expense,
 .dot.outcome {
     background-color: #e74c3c;
+}
+
+.metric-positive strong {
+    color: #247a4b;
+}
+
+.metric-negative strong {
+    color: #c0392b;
+}
+
+.chart-state {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.chart-state--error {
+    color: #c0392b;
 }
 
 /* ── Right Panel: AI Chatbox ── */
