@@ -9,7 +9,7 @@ RUN npm install
 COPY public ./public
 COPY src ./src
 
-ENV REACT_APP_API_BASE_URL=
+ENV REACT_APP_API_BASE_URL=/api
 RUN npm run build
 
 # Stage 2: Serve with nginx
