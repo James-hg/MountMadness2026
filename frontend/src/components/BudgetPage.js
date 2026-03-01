@@ -31,6 +31,7 @@ export default function BudgetPage() {
   // Per-category limit inputs: { [category_id]: string }
   const [limits, setLimits] = useState({});
   const [savingCatId, setSavingCatId] = useState(null);
+  const [focusedCatId, setFocusedCatId] = useState(null);
   const originalLimits = useRef({});
 
   // Allocation mode: 'dollar' or 'percent'
@@ -373,7 +374,8 @@ export default function BudgetPage() {
                         min="0"
                         value={limits[cat.category_id] ?? ''}
                         onChange={(e) => handleLimitChange(cat.category_id, e.target.value)}
-                        onBlur={() => handleLimitSave(cat.category_id)}
+                        onFocus={() => setFocusedCatId(cat.category_id)}
+                        onBlur={() => { setFocusedCatId(null); handleLimitSave(cat.category_id); }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') { e.target.blur(); }
                         }}
@@ -381,9 +383,13 @@ export default function BudgetPage() {
                       />
                       {isSaving && <span className="budget-saving-indicator">saving...</span>}
                       <span className="budget-available-label">
-                        {allocMode === 'percent' && totalBudget > 0
-                          ? `${((Math.max(0, unallocated) / totalBudget) * 100).toFixed(1)}% available fund`
-                          : `$${Math.max(0, unallocated).toFixed(2)} available fund`}
+                        {focusedCatId === cat.category_id
+                          ? (allocMode === 'percent' && totalBudget > 0
+                              ? `${((Math.max(0, unallocated) / totalBudget) * 100).toFixed(1)}% available fund`
+                              : `$${Math.max(0, unallocated).toFixed(2)} available fund`)
+                          : (remaining >= 0
+                              ? `$${remaining.toFixed(2)} left`
+                              : `-$${Math.abs(remaining).toFixed(2)} over`)}
                       </span>
                     </div>
                     <div className="progress-bar">
