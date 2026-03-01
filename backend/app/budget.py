@@ -54,6 +54,7 @@ class BudgetTotalRequest(BaseModel):
     total_budget_amount: Decimal = Field(gt=Decimal("0"), max_digits=12, decimal_places=2)
     categories_in_scope: list[UUID] | None = None
     use_active_categories: bool = False
+    force_reset: bool = False
 
 
 class BudgetCategoryUpsertRequest(BaseModel):
@@ -403,6 +404,13 @@ async def post_budget_total(
             total_budget_amount=payload.total_budget_amount,
             currency=currency,
         )
+
+        if payload.force_reset:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    "UPDATE budgets SET is_user_modified = FALSE WHERE user_id = %s AND month_start = %s",
+                    (user_id, month_start),
+                )
 
         existing_budgets = await _fetch_existing_budgets(connection, user_id, month_start)
 
