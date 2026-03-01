@@ -82,6 +82,11 @@ def _tool_call_fingerprint(tool_name: str, args: dict[str, Any]) -> str:
     return digest
 
 
+def _is_memory_storage_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "ai_conversations" in text or "ai_messages" in text
+
+
 @router.post("/chat", response_model=AIChatResponse)
 async def ai_chat(
     payload: AIChatRequest,
@@ -117,31 +122,44 @@ async def ai_chat(
             detail="AI assistant is unavailable because GEMINI_API_KEY is not configured.",
         )
 
-    conversation_id = await get_or_create_conversation(
-        connection,
-        user_id,
-        payload.conversation_id,
-    )
+    memory_enabled = True
+    response_conversation_id = "stateless"
+    conversation_id: UUID | None = None
 
-    await append_message(
-        connection,
-        conversation_id,
-        user_id,
-        "user",
-        message_text,
-        meta={},
-    )
+    try:
+        conversation_id = await get_or_create_conversation(
+            connection,
+            user_id,
+            payload.conversation_id,
+        )
+        response_conversation_id = str(conversation_id)
 
-    context = await build_context(connection, conversation_id, user_id)
-    system_prompt = build_system_prompt(context["summary"])
+        await append_message(
+            connection,
+            conversation_id,
+            user_id,
+            "user",
+            message_text,
+            meta={},
+        )
 
-    conversation_messages = [
-        {
-            "role": item["role"],
-            "content": item["content"],
-        }
-        for item in context["messages"]
-    ]
+        context = await build_context(connection, conversation_id, user_id)
+        system_prompt = build_system_prompt(context["summary"])
+
+        conversation_messages = [
+            {
+                "role": item["role"],
+                "content": item["content"],
+            }
+            for item in context["messages"]
+        ]
+    except Exception as exc:
+        # Fast fail-safe for environments where AI memory migrations were not applied yet.
+        if not _is_memory_storage_error(exc):
+            raise
+        memory_enabled = False
+        system_prompt = build_system_prompt("")
+        conversation_messages = [{"role": "user", "content": message_text}]
 
     client = _get_gemini_client()
     schemas = tool_schemas()
@@ -206,18 +224,19 @@ async def ai_chat(
                     }
 
                     tool_content = json.dumps(tool_payload, separators=(",", ":"))
-                    await append_message(
-                        connection,
-                        conversation_id,
-                        user_id,
-                        "tool",
-                        tool_content,
-                        meta={
-                            "tool_name": call.name,
-                            "summary": tool_result["summary"],
-                            "kind": tool_result["kind"],
-                        },
-                    )
+                    if memory_enabled and conversation_id is not None:
+                        await append_message(
+                            connection,
+                            conversation_id,
+                            user_id,
+                            "tool",
+                            tool_content,
+                            meta={
+                                "tool_name": call.name,
+                                "summary": tool_result["summary"],
+                                "kind": tool_result["kind"],
+                            },
+                        )
                     conversation_messages.append({
                         "role": "tool",
                         "content": tool_content,
@@ -246,19 +265,20 @@ async def ai_chat(
     except GeminiError as exc:
         raise HTTPException(status_code=502, detail="AI assistant response could not be processed.") from exc
 
-    await append_message(
-        connection,
-        conversation_id,
-        user_id,
-        "assistant",
-        final_reply,
-        meta={"actions": actions},
-    )
-    await summarize_if_needed(connection, conversation_id, user_id)
+    if memory_enabled and conversation_id is not None:
+        await append_message(
+            connection,
+            conversation_id,
+            user_id,
+            "assistant",
+            final_reply,
+            meta={"actions": actions},
+        )
+        await summarize_if_needed(connection, conversation_id, user_id)
 
     return AIChatResponse(
         reply=final_reply,
-        conversation_id=str(conversation_id),
+        conversation_id=response_conversation_id,
         actions=[AIActionItem(**action) for action in actions],
         needs_confirmation=False,
     )
