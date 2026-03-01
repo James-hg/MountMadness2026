@@ -68,6 +68,7 @@
    ```env
    GEMINI_API_KEY=your-gemini-key
    DATABASE_URL=postgresql://user:pass@host:5432/dbname
+   CORS_ALLOW_ORIGINS=http://localhost:5173
    JWT_SECRET_KEY=your-secret-key
    ```
 
@@ -78,20 +79,29 @@
 
 4. **Run database migrations** (against your PostgreSQL instance):
    ```bash
-   # All at once (recommended):
-   psql $DATABASE_URL -f backend/db/000_run_all.sql
+   # All at once (recommended, no local psql needed):
+   docker run --rm \
+     --env-file backend/.env \
+     -v "$PWD/backend/db:/migrations" \
+     -w /migrations \
+     postgres:16-alpine \
+     sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f 000_run_all.sql'
 
    # Or manually in order:
-   psql $DATABASE_URL -f backend/db/001_auth_schema.sql
-   psql $DATABASE_URL -f backend/db/002_categories_schema.sql
-   psql $DATABASE_URL -f backend/db/003_transactions_schema.sql
-   psql $DATABASE_URL -f backend/db/004_seed_dev_admin.sql
-   psql $DATABASE_URL -f backend/db/005_budget_limits_schema.sql
-   psql $DATABASE_URL -f backend/db/006_smart_budget_allocation.sql
-   psql $DATABASE_URL -f backend/db/007_reports_indexes.sql
-   psql $DATABASE_URL -f backend/db/008_fixed_and_recurring_schema.sql
-   psql $DATABASE_URL -f backend/db/009_ai_conversation_memory.sql
-   psql $DATABASE_URL -f backend/db/010_goals_schema.sql
+   docker run --rm \
+     --env-file backend/.env \
+     -v "$PWD/backend/db:/migrations" \
+     postgres:16-alpine \
+     sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+       -f /migrations/001_auth_schema.sql \
+       -f /migrations/002_categories_schema.sql \
+       -f /migrations/003_transactions_schema.sql \
+       -f /migrations/005_budget_limits_schema.sql \
+       -f /migrations/006_smart_budget_allocation.sql \
+       -f /migrations/007_reports_indexes.sql \
+       -f /migrations/008_fixed_and_recurring_schema.sql \
+       -f /migrations/009_ai_conversation_memory.sql \
+       -f /migrations/010_goals_schema.sql'
    ```
 
 ### Access
@@ -102,6 +112,54 @@
 | Backend API | http://localhost:8000 |
 | Interactive API Docs | http://localhost:8000/docs |
 | Health Check | http://localhost:8000/health |
+
+---
+
+## Deploy to Vercel
+
+Recommended setup: deploy **backend** and **frontend** as two separate Vercel projects from the same repo.
+
+### 1) Deploy backend (`backend/`)
+
+1. In Vercel, create a new project from this repo.
+2. Set **Root Directory** to `backend`.
+3. Keep the included `backend/vercel.json` (routes all traffic to FastAPI via `backend/api/index.py`).
+4. Set backend environment variables:
+   - `DATABASE_URL`
+   - `JWT_SECRET_KEY`
+   - `JWT_ALGORITHM`
+   - `GEMINI_API_KEY`
+   - `GEMINI_MODEL`
+   - `CORS_ALLOW_ORIGINS=https://<your-frontend-domain>.vercel.app`
+5. Deploy.
+
+### 2) Run migrations on production DB (Neon)
+
+Run once against the same `DATABASE_URL` used by backend:
+
+```bash
+docker run --rm \
+  --env-file backend/.env \
+  -v "$PWD/backend/db:/migrations" \
+  -w /migrations \
+  postgres:16-alpine \
+  sh -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f 000_run_all.sql'
+```
+
+### 3) Deploy frontend (`frontend/`)
+
+1. Create another Vercel project from the same repo.
+2. Set **Root Directory** to `frontend`.
+3. Set frontend environment variable:
+   - `REACT_APP_API_BASE_URL=https://<your-backend-domain>.vercel.app`
+4. Deploy.
+
+### 4) Verify
+
+- Open frontend URL.
+- Confirm auth + API calls work.
+- Check backend docs at `https://<your-backend-domain>.vercel.app/docs`.
+- If requests fail in browser but backend works in Postman, re-check `CORS_ALLOW_ORIGINS`.
 
 ---
 
@@ -273,6 +331,7 @@ MountMadness2026/
 | `GEMINI_API_KEY` | Yes | — | Google Gemini API key |
 | `GEMINI_MODEL` | No | `gemini-2.5-pro` | Gemini model to use |
 | `DATABASE_URL` | Yes | — | PostgreSQL connection string |
+| `CORS_ALLOW_ORIGINS` | No | `*` | Comma-separated allowed frontend origins for CORS |
 | `JWT_SECRET_KEY` | Yes | — | Secret for signing JWTs |
 | `JWT_ALGORITHM` | No | `HS256` | JWT signing algorithm |
 

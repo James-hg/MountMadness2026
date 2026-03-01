@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     # run "ListModels" or check provider docs. 1.5 is widely supported.
     gemini_model: str = "gemini-2.5-pro"  # override via GEMINI_MODEL in .env if needed
     database_url: str = ""
+    # Comma-separated origins for CORS. Use "*" only for hackathon/demo environments.
+    cors_allow_origins: str = "*"
     jwt_secret_key: str
     jwt_algorithm: str
 

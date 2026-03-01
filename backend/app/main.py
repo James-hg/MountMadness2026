@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .ai.router import router as ai_router
@@ -27,6 +28,20 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+# Allow frontend apps (local + Vercel) to call the API from a different origin.
+cors_origins = [origin.strip() for origin in settings.cors_allow_origins.split(",") if origin.strip()]
+if not cors_origins:
+    cors_origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(auth_router)
 app.include_router(transactions_router)
 app.include_router(budget_router)
