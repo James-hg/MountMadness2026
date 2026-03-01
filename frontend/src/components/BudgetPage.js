@@ -200,18 +200,21 @@ export default function BudgetPage() {
       return;
     }
 
-    // Sum-based validation: all categories' limits must not exceed total budget
-    const otherCatsTotal = Object.entries(originalLimits.current)
-      .filter(([id]) => id !== catId)
-      .reduce((sum, [, val]) => sum + Number(val), 0);
+    // Sum-based validation: only expense categories' limits must not exceed total budget
+    const expenseCatIds = new Set((budget?.category_budgets || []).map(c => String(c.category_id)));
+    if (expenseCatIds.has(String(catId))) {
+      const otherCatsTotal = Object.entries(originalLimits.current)
+        .filter(([id]) => id !== catId && expenseCatIds.has(id))
+        .reduce((sum, [, val]) => sum + Number(val), 0);
 
-    if (otherCatsTotal + dollarAmount > totalBudget && dollarAmount > origDollar) {
-      const available = Math.max(0, totalBudget - otherCatsTotal);
-      setError(allocMode === 'percent'
-        ? `Total exceeds 100%. Available: ${totalBudget > 0 ? ((available / totalBudget) * 100).toFixed(1) : 0}%`
-        : `Total exceeds budget. Available: $${available.toFixed(2)}`);
-      setLimits((prev) => ({ ...prev, [catId]: toDisplayValue(origVal) }));
-      return;
+      if (otherCatsTotal + dollarAmount > totalBudget && dollarAmount > origDollar) {
+        const available = Math.max(0, totalBudget - otherCatsTotal);
+        setError(allocMode === 'percent'
+          ? `Total exceeds 100%. Available: ${totalBudget > 0 ? ((available / totalBudget) * 100).toFixed(1) : 0}%`
+          : `Total exceeds budget. Available: $${available.toFixed(2)}`);
+        setLimits((prev) => ({ ...prev, [catId]: toDisplayValue(origVal) }));
+        return;
+      }
     }
 
     setSavingCatId(catId);
@@ -522,12 +525,6 @@ export default function BudgetPage() {
               <div className="budget-summary-card">
                 <span className="summary-label">Total Budget</span>
                 <span className="summary-value">${totalBudget.toFixed(2)}</span>
-              </div>
-              <div className="budget-summary-card">
-                <span className="summary-label">Total Spent</span>
-                <span className="summary-value" style={{ color: '#e74c3c' }}>
-                  ${totalSpent.toFixed(2)}
-                </span>
               </div>
               <div className="budget-summary-card">
                 <span className="summary-label">Remaining</span>
