@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from .auth import router as auth_router
 from .budget import router as budget_router
+from .categories import router as categories_router
 from .config import settings
 from .database import close_db_pool, init_db_pool
 from .reports import router as reports_router
@@ -23,6 +24,7 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(transactions_router)
 app.include_router(budget_router)
+app.include_router(categories_router)
 app.include_router(reports_router)
 
 

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import NavBar from './NavBar';
-import { apiGet } from '../api';
+import { apiGet, apiPost, apiPatch } from '../api';
 
 function formatDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -111,9 +111,33 @@ export default function TransactionsPage() {
   const [amountMax, setAmountMax] = useState('');
   const [sortBy, setSortBy] = useState(['date_desc']);
 
+  // New Transaction form
+  const [formType, setFormType] = useState('expense');
+  const [formAmount, setFormAmount] = useState('');
+  const [formDate, setFormDate] = useState(formatDate(new Date()));
+  const [formCategoryId, setFormCategoryId] = useState('');
+  const [formMerchant, setFormMerchant] = useState('');
+  const [formNote, setFormNote] = useState('');
+  const [formError, setFormError] = useState('');
+  const [formSaving, setFormSaving] = useState(false);
+  const [categories, setCategories] = useState([]);
+
+  // Inline edit state
+  const [editingId, setEditingId] = useState(null);
+  const [editType, setEditType] = useState('expense');
+  const [editAmount, setEditAmount] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [editMerchant, setEditMerchant] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editError, setEditError] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
   // View options
   const [viewMode, setViewMode] = useState('list');
   const [aggregation, setAggregation] = useState('default');
+  const [cashFlowOpen, setCashFlowOpen] = useState(true);
+  const [categorySummaryOpen, setCategorySummaryOpen] = useState(true);
 
   // Calendar state
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -169,6 +193,95 @@ export default function TransactionsPage() {
     fetchTransactions();
   }, [fetchTransactions]);
 
+  // ── Fetch categories ──
+  useEffect(() => {
+    apiGet('/categories').then(setCategories).catch(() => setCategories([]));
+  }, []);
+
+  const filteredCategories = categories.filter((c) => c.kind === formType);
+  const editFilteredCategories = categories.filter((c) => c.kind === editType);
+
+  const resetForm = () => {
+    setFormType('expense');
+    setFormAmount('');
+    setFormDate(formatDate(new Date()));
+    setFormCategoryId('');
+    setFormMerchant('');
+    setFormNote('');
+    setFormError('');
+  };
+
+  const handleSubmitTransaction = async (e) => {
+    e.preventDefault();
+    setFormError('');
+
+    if (!formAmount || Number(formAmount) <= 0) { setFormError('You can only put a positive value for amount'); return; }
+    if (!formDate) { setFormError('Date is required'); return; }
+    if (!formCategoryId) { setFormError('Please select a category'); return; }
+
+    setFormSaving(true);
+    try {
+      await apiPost('/transactions', {
+        type: formType,
+        amount: formAmount,
+        occurred_on: formDate,
+        category_id: formCategoryId,
+        merchant: formMerchant || null,
+        note: formNote || null,
+      });
+      resetForm();
+      setShowForm(false);
+      fetchTransactions();
+    } catch (err) {
+      setFormError(err.message || 'Failed to create transaction');
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const startEditing = (t) => {
+    setEditingId(t.id);
+    setEditType(t.type);
+    setEditAmount(Math.abs(Number(t.amount)).toString());
+    setEditDate(t.occurred_on);
+    setEditCategoryId(t.category_id);
+    setEditMerchant(t.merchant || '');
+    setEditNote(t.note || '');
+    setEditError('');
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditError('');
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setEditError('');
+
+    if (!editAmount || Number(editAmount) <= 0) { setEditError('You can only put a positive value for amount'); return; }
+    if (!editDate) { setEditError('Date is required'); return; }
+    if (!editCategoryId) { setEditError('Please select a category'); return; }
+
+    setEditSaving(true);
+    try {
+      await apiPatch(`/transactions/${editingId}`, {
+        type: editType,
+        amount: editAmount,
+        occurred_on: editDate,
+        category_id: editCategoryId,
+        merchant: editMerchant || null,
+        note: editNote || null,
+      });
+      setEditingId(null);
+      fetchTransactions();
+    } catch (err) {
+      setEditError(err.message || 'Failed to update transaction');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   // ── List helpers ──
   const groups = groupTransactions(transactions, aggregation);
 
@@ -191,6 +304,20 @@ export default function TransactionsPage() {
   const todayStr = new Date().toDateString();
   const selectedTxns = selectedDate ? transactionsForDate(selectedDate) : [];
 
+  // ── Category summary for sidebar ──
+  const categorySummary = useMemo(() => {
+    const map = {};
+    for (const t of transactions) {
+      const cat = categories.find(c => c.id === t.category_id);
+      const name = cat ? cat.name : 'Uncategorized';
+      const amt = Math.abs(Number(t.amount));
+      if (!map[name]) map[name] = { income: 0, expense: 0 };
+      if (t.type === 'income') map[name].income += amt;
+      else map[name].expense += amt;
+    }
+    return Object.entries(map).sort((a, b) => (b[1].expense + b[1].income) - (a[1].expense + a[1].income));
+  }, [transactions, categories]);
+
   return (
     <>
       <NavBar />
@@ -205,47 +332,45 @@ export default function TransactionsPage() {
         {showForm && (
           <div className="card">
             <h2 className="card-title">New Transaction</h2>
-            <form className="page-form" onSubmit={(e) => e.preventDefault()}>
+            {formError && <div style={{ color: '#e74c3c', background: '#fdecea', border: '1px solid #e74c3c', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>{formError}</div>}
+            <form className="page-form" onSubmit={handleSubmitTransaction}>
               <div className="form-row">
                 <div className="form-group">
                   <label>Type</label>
-                  <select className="form-select" disabled>
-                    <option>Expense</option>
-                    <option>Income</option>
+                  <select className="form-select" value={formType} onChange={(e) => { setFormType(e.target.value); setFormCategoryId(''); }}>
+                    <option value="expense">Expense</option>
+                    <option value="income">Income</option>
                   </select>
                 </div>
                 <div className="form-group">
                   <label>Amount</label>
-                  <input type="number" placeholder="0.00" disabled />
+                  <input type="number" step="0.01" min="0.01" placeholder="0.00" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label>Date</label>
-                  <input type="date" disabled />
+                  <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label>Category</label>
-                  <select className="form-select" disabled>
+                  <select className="form-select" value={formCategoryId} onChange={(e) => setFormCategoryId(e.target.value)}>
                     <option value="">Select category...</option>
-                    <option>Food</option>
-                    <option>Housing/Rent</option>
-                    <option>Transport</option>
-                    <option>Insurance</option>
-                    <option>Tuition</option>
-                    <option>Bills/Utilities</option>
-                    <option>Shopping</option>
-                    <option>Entertainment</option>
-                    <option>Health</option>
-                    <option>Other</option>
+                    {filteredCategories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
                   </select>
+                </div>
+                <div className="form-group">
+                  <label>Name</label>
+                  <input type="text" placeholder="Transaction name..." value={formMerchant} onChange={(e) => setFormMerchant(e.target.value)} />
                 </div>
                 <div className="form-group" style={{ flex: 2 }}>
                   <label>Note</label>
-                  <input type="text" placeholder="Optional note..." disabled />
+                  <input type="text" placeholder="Optional note..." value={formNote} onChange={(e) => setFormNote(e.target.value)} />
                 </div>
               </div>
-              <button className="primary-btn" disabled>Save Transaction</button>
+              <button className="primary-btn" disabled={formSaving}>{formSaving ? 'Saving...' : 'Save Transaction'}</button>
             </form>
           </div>
         )}
@@ -433,24 +558,60 @@ export default function TransactionsPage() {
                     {groups.map((group, gi) => (
                       <div key={gi}>
                         {group.label && <div className="txn-date-header">{group.label}</div>}
-                        {group.items.map((t) => (
-                          <div key={t.id} className="txn-item">
-                            <div className="txn-item-left">
-                              <span className={`txn-item-type ${t.type}`}>
-                                {t.type === 'income' ? '+' : '-'}
-                              </span>
-                              <div className="txn-item-details">
-                                <span className="txn-item-merchant">
-                                  {t.merchant || t.note || 'Transaction'}
+                        {group.items.map((t) => {
+                          const isEditing = editingId === t.id;
+                          const displayType = isEditing ? editType : t.type;
+                          const displayMerchant = isEditing ? (editMerchant || editNote || 'Transaction') : (t.merchant || t.note || 'Transaction');
+                          const displayDate = isEditing ? editDate : t.occurred_on;
+                          const displayAmount = Math.abs(isEditing ? (Number(editAmount) || 0) : Number(t.amount));
+                          return (
+                            <div key={t.id} className={isEditing ? 'txn-item-wrapper' : ''}>
+                              <div className="txn-item" onClick={() => !isEditing && startEditing(t)} style={{ cursor: isEditing ? 'default' : 'pointer' }}>
+                                <div className="txn-item-left">
+                                  <span className={`txn-item-type ${displayType}`}>
+                                    {displayType === 'income' ? '+' : '-'}
+                                  </span>
+                                  <div className="txn-item-details">
+                                    <span className="txn-item-merchant">{displayMerchant}</span>
+                                    <span className="txn-item-date">{displayDate}</span>
+                                  </div>
+                                </div>
+                                <span className={`txn-item-amount ${displayType}`}>
+                                  {displayType === 'income' ? '+' : '-'}${displayAmount.toFixed(2)}
                                 </span>
-                                <span className="txn-item-date">{t.occurred_on}</span>
                               </div>
+                              {isEditing && (
+                                <div className="txn-item-edit">
+                                  {editError && <div className="txn-edit-error">{editError}</div>}
+                                  <form onSubmit={handleSaveEdit}>
+                                    <div className="txn-edit-row">
+                                      <select className="txn-edit-input" value={editType} onChange={(e) => { setEditType(e.target.value); setEditCategoryId(''); }}>
+                                        <option value="expense">Expense</option>
+                                        <option value="income">Income</option>
+                                      </select>
+                                      <input type="number" className="txn-edit-input" step="0.01" min="0.01" placeholder="Amount" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
+                                      <input type="date" className="txn-edit-input" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                                    </div>
+                                    <div className="txn-edit-row">
+                                      <select className="txn-edit-input" value={editCategoryId} onChange={(e) => setEditCategoryId(e.target.value)}>
+                                        <option value="">Select category...</option>
+                                        {editFilteredCategories.map((c) => (
+                                          <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                      </select>
+                                      <input type="text" className="txn-edit-input" placeholder="Name..." value={editMerchant} onChange={(e) => setEditMerchant(e.target.value)} />
+                                      <input type="text" className="txn-edit-input" placeholder="Note..." value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+                                    </div>
+                                    <div className="txn-edit-actions">
+                                      <button type="submit" className="primary-btn txn-edit-btn" disabled={editSaving}>{editSaving ? 'Saving...' : 'Save'}</button>
+                                      <button type="button" className="secondary-btn txn-edit-btn" onClick={cancelEditing}>Cancel</button>
+                                    </div>
+                                  </form>
+                                </div>
+                              )}
                             </div>
-                            <span className={`txn-item-amount ${t.type}`}>
-                              {t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)}
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
@@ -521,6 +682,10 @@ export default function TransactionsPage() {
                       const dayTxns = transactionsForDate(dayObj.date);
                       const isSelected = selectedDate && dayObj.date.toDateString() === selectedDate.toDateString();
                       const isToday = dayObj.date.toDateString() === todayStr;
+                      const dayNet = dayTxns.reduce((sum, t) => {
+                        const amt = Math.abs(Number(t.amount));
+                        return sum + (t.type === 'income' ? amt : -amt);
+                      }, 0);
                       return (
                         <div
                           key={idx}
@@ -529,19 +694,26 @@ export default function TransactionsPage() {
                             !dayObj.isCurrentMonth && 'calendar-day--outside',
                             isSelected && 'calendar-day--selected',
                             isToday && 'calendar-day--today',
+                            dayTxns.length > 0 && dayNet > 0 && 'calendar-day--positive',
+                            dayTxns.length > 0 && dayNet < 0 && 'calendar-day--negative',
                           ].filter(Boolean).join(' ')}
                           onClick={() => setSelectedDate(dayObj.date)}
                         >
                           <span className="calendar-day-number">{dayObj.date.getDate()}</span>
                           {dayTxns.length > 0 && (
-                            <div className="calendar-day-indicators">
-                              {dayTxns.length <= 3
-                                ? dayTxns.map((t) => (
-                                    <span key={t.id} className={`calendar-dot ${t.type === 'income' ? 'income' : 'outcome'}`} />
-                                  ))
-                                : <span className="calendar-day-count">{dayTxns.length}</span>
-                              }
-                            </div>
+                              <>
+                                <span className={`calendar-day-cashflow ${dayNet >= 0 ? 'positive' : 'negative'}`}>
+                                  {dayNet >= 0 ? '+' : '-'}${Math.abs(dayNet).toFixed(2)}
+                                </span>
+                                <div className="calendar-day-indicators">
+                                  {dayTxns.length <= 3
+                                    ? dayTxns.map((t) => (
+                                        <span key={t.id} className={`calendar-dot ${t.type === 'income' ? 'income' : 'outcome'}`} />
+                                      ))
+                                    : <span className="calendar-day-count">{dayTxns.length}</span>
+                                  }
+                                </div>
+                              </>
                           )}
                         </div>
                       );
@@ -550,6 +722,41 @@ export default function TransactionsPage() {
 
                   {loading && <p style={{ textAlign: 'center', padding: 12, color: '#888' }}>Loading...</p>}
                 </div>
+
+                {aggregation !== 'default' && transactions.length > 0 && (
+                  <div className="card">
+                    <div className="collapsible-header" onClick={() => setCashFlowOpen(!cashFlowOpen)}>
+                      <h2 className="card-title">
+                        {aggregation.charAt(0).toUpperCase() + aggregation.slice(1)} Cash Flow
+                      </h2>
+                      <span className={`collapsible-arrow${cashFlowOpen ? ' open' : ''}`}>&#9662;</span>
+                    </div>
+                    {cashFlowOpen && (
+                      <div className="calendar-summary-list">
+                        {groupTransactions(transactions, aggregation).map((group, gi) => {
+                          const groupNet = group.items.reduce((sum, t) => {
+                            const amt = Math.abs(Number(t.amount));
+                            return sum + (t.type === 'income' ? amt : -amt);
+                          }, 0);
+                          const groupIncome = group.items.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+                          const groupExpense = group.items.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+                          return (
+                            <div key={gi} className="calendar-summary-row">
+                              <span className="calendar-summary-label">{group.label}</span>
+                              <div className="calendar-summary-amounts">
+                                {groupIncome > 0 && <span className="calendar-summary-amount income">+${groupIncome.toFixed(2)}</span>}
+                                {groupExpense > 0 && <span className="calendar-summary-amount expense">-${groupExpense.toFixed(2)}</span>}
+                                <span className={`calendar-summary-net ${groupNet >= 0 ? 'income' : 'expense'}`}>
+                                  {groupNet >= 0 ? '+' : '-'}${Math.abs(groupNet).toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {selectedDate && (
                   <div className="card">
@@ -566,21 +773,56 @@ export default function TransactionsPage() {
                       </div>
                     ) : (
                       <div className="calendar-txn-list">
-                        {selectedTxns.map((t) => (
-                          <div key={t.id} className="calendar-txn-item">
-                            <div className="calendar-txn-info">
-                              <span className={`calendar-txn-type ${t.type}`}>
-                                {t.type === 'income' ? '+' : '-'}
-                              </span>
-                              <span className="calendar-txn-merchant">
-                                {t.merchant || t.note || 'Transaction'}
-                              </span>
+                        {selectedTxns.map((t) => {
+                          const isEditing = editingId === t.id;
+                          const displayType = isEditing ? editType : t.type;
+                          const displayMerchant = isEditing ? (editMerchant || editNote || 'Transaction') : (t.merchant || t.note || 'Transaction');
+                          const displayAmount = Math.abs(isEditing ? (Number(editAmount) || 0) : Number(t.amount));
+                          return (
+                            <div key={t.id} className={isEditing ? 'txn-item-wrapper' : ''}>
+                              <div className="calendar-txn-item" onClick={() => !isEditing && startEditing(t)} style={{ cursor: isEditing ? 'default' : 'pointer' }}>
+                                <div className="calendar-txn-info">
+                                  <span className={`calendar-txn-type ${displayType}`}>
+                                    {displayType === 'income' ? '+' : '-'}
+                                  </span>
+                                  <span className="calendar-txn-merchant">{displayMerchant}</span>
+                                </div>
+                                <span className={`calendar-txn-amount ${displayType}`}>
+                                  {displayType === 'income' ? '+' : '-'}${displayAmount.toFixed(2)}
+                                </span>
+                              </div>
+                              {isEditing && (
+                                <div className="txn-item-edit">
+                                  {editError && <div className="txn-edit-error">{editError}</div>}
+                                  <form onSubmit={handleSaveEdit}>
+                                    <div className="txn-edit-row">
+                                      <select className="txn-edit-input" value={editType} onChange={(e) => { setEditType(e.target.value); setEditCategoryId(''); }}>
+                                        <option value="expense">Expense</option>
+                                        <option value="income">Income</option>
+                                      </select>
+                                      <input type="number" className="txn-edit-input" step="0.01" min="0.01" placeholder="Amount" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
+                                      <input type="date" className="txn-edit-input" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+                                    </div>
+                                    <div className="txn-edit-row">
+                                      <select className="txn-edit-input" value={editCategoryId} onChange={(e) => setEditCategoryId(e.target.value)}>
+                                        <option value="">Select category...</option>
+                                        {editFilteredCategories.map((c) => (
+                                          <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                      </select>
+                                      <input type="text" className="txn-edit-input" placeholder="Name..." value={editMerchant} onChange={(e) => setEditMerchant(e.target.value)} />
+                                      <input type="text" className="txn-edit-input" placeholder="Note..." value={editNote} onChange={(e) => setEditNote(e.target.value)} />
+                                    </div>
+                                    <div className="txn-edit-actions">
+                                      <button type="submit" className="primary-btn txn-edit-btn" disabled={editSaving}>{editSaving ? 'Saving...' : 'Save'}</button>
+                                      <button type="button" className="secondary-btn txn-edit-btn" onClick={cancelEditing}>Cancel</button>
+                                    </div>
+                                  </form>
+                                </div>
+                              )}
                             </div>
-                            <span className={`calendar-txn-amount ${t.type}`}>
-                              {t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)}
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -609,17 +851,16 @@ export default function TransactionsPage() {
               </div>
             </div>
 
-            {viewMode === 'list' && (
-              <div className="txn-filter-group">
-                <label>Group By</label>
-                <div className="txn-radio-group">
-                  {[
-                    { value: 'default', label: 'Default' },
-                    { value: 'daily', label: 'Daily' },
-                    { value: 'weekly', label: 'Weekly' },
-                    { value: 'monthly', label: 'Monthly' },
-                    { value: 'yearly', label: 'Yearly' },
-                  ].map((opt) => (
+            <div className="txn-filter-group">
+              <label>Group By</label>
+              <div className="txn-radio-group">
+                {[
+                  { value: 'default', label: 'Default' },
+                  { value: 'daily', label: 'Daily' },
+                  { value: 'weekly', label: 'Weekly' },
+                  { value: 'monthly', label: 'Monthly' },
+                  { value: 'yearly', label: 'Yearly' },
+                ].filter((opt) => viewMode === 'list' || opt.value !== 'default').map((opt) => (
                     <button
                       key={opt.value}
                       className={`txn-radio-option${aggregation === opt.value ? ' active' : ''}`}
@@ -629,6 +870,46 @@ export default function TransactionsPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+            {viewMode === 'calendar' && categorySummary.length > 0 && (
+              <div className="category-summary">
+                <div className="collapsible-header" onClick={() => setCategorySummaryOpen(!categorySummaryOpen)}>
+                  <h3 className="card-title">Category Summary</h3>
+                  <span className={`collapsible-arrow${categorySummaryOpen ? ' open' : ''}`}>&#9662;</span>
+                </div>
+                {categorySummaryOpen && (
+                  <>
+                    {categorySummary.map(([name, totals]) => {
+                      return (
+                        <div key={name} className="category-summary-item">
+                          <span className="category-summary-name">{name}</span>
+                          <div className="category-summary-amounts">
+                            {totals.expense > 0 && (
+                              <span className="category-summary-amount expense">-${totals.expense.toFixed(2)}</span>
+                            )}
+                            {totals.income > 0 && (
+                              <span className="category-summary-amount income">+${totals.income.toFixed(2)}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(() => {
+                      const totalIncome = categorySummary.reduce((s, [, t]) => s + t.income, 0);
+                      const totalExpense = categorySummary.reduce((s, [, t]) => s + t.expense, 0);
+                      const monthNet = totalIncome - totalExpense;
+                      return (
+                        <div className="category-summary-total">
+                          <span className="category-summary-name">Monthly Total</span>
+                          <span className={`category-summary-amount ${monthNet >= 0 ? 'income' : 'expense'}`}>
+                            {monthNet >= 0 ? '+' : '-'}${Math.abs(monthNet).toFixed(2)}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
               </div>
             )}
           </aside>
