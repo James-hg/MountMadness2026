@@ -72,10 +72,15 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     if (!MOCK_MODE) {
       const token = localStorage.getItem('access_token');
+      const refreshToken = localStorage.getItem('refresh_token');
       if (token) {
         fetch('/api/auth/logout', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refresh_token: refreshToken }),
         }).catch(() => {});
       }
     }
