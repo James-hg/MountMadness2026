@@ -22,7 +22,7 @@ export default function ChatPanel() {
     setLoading(true);
 
     try {
-      const data = await apiPost('/api/chat', { message: text });
+      const data = await apiPost('/chat', { message: text });
       setMessages((prev) => [...prev, { text: data.reply, sender: 'ai' }]);
     } catch {
       setMessages((prev) => [...prev, { text: 'Sorry, could not connect to the server.', sender: 'ai' }]);

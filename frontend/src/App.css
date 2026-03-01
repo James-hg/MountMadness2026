@@ -1476,6 +1476,161 @@ body {
     color: #e74c3c;
 }
 
+/* Sort order visualization */
+.txn-sort-order {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.txn-sort-order > label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.txn-sort-order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.txn-sort-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border: 1.5px solid #d0cde0;
+    border-radius: 8px;
+    background: #f8f7fc;
+    font-size: 0.8rem;
+}
+
+.txn-sort-chip-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #6c5ce7;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.txn-sort-chip-label {
+    flex: 1;
+    font-weight: 500;
+    color: #333;
+}
+
+.txn-sort-chip-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.txn-sort-chip-btn {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid #d0cde0;
+    border-radius: 4px;
+    background: #fff;
+    font-size: 0.7rem;
+    color: #666;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    font-family: inherit;
+    line-height: 1;
+}
+
+.txn-sort-chip-btn:hover:not(:disabled) {
+    background: #f0eef8;
+    border-color: #6c5ce7;
+    color: #6c5ce7;
+}
+
+.txn-sort-chip-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.txn-sort-chip-remove:hover:not(:disabled) {
+    background: #fde8e8;
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+
+/* Date range styling */
+.txn-date-range {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.txn-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.txn-date-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.txn-date-active {
+    border-color: #6c5ce7 !important;
+    background: #f8f5ff !important;
+}
+
+.txn-date-range-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.txn-date-range-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #6c5ce7;
+    background: #f0eef8;
+    padding: 3px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+}
+
+.txn-date-clear {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: #999;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-family: inherit;
+    text-decoration: underline;
+    flex-shrink: 0;
+}
+
+.txn-date-clear:hover {
+    color: #e74c3c;
+}
+
 /* Responsive: stack columns */
 @media (max-width: 900px) {
     .txn-layout {
