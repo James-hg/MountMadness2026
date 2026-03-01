@@ -334,14 +334,3 @@ MountMadness2026/
 | `CORS_ALLOW_ORIGINS` | No | `*` | Comma-separated allowed frontend origins for CORS |
 | `JWT_SECRET_KEY` | Yes | — | Secret for signing JWTs |
 | `JWT_ALGORITHM` | No | `HS256` | JWT signing algorithm |
-
----
-
-## Team
-
-| Member | Areas |
-|---|---|
-| **James** | Dashboard |
-| **Jeehoon** | Transactions, Budget |
-| **Mason** | Reports, Settings |
-| **Haki** | Import, AI Receipt/PDF Extraction |
