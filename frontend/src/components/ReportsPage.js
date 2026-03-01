@@ -7,7 +7,7 @@ import {
   BarElement, ArcElement,
   Title, Tooltip, Legend, Filler,
 } from 'chart.js';
-import { apiGet } from '../api';
+import { apiGet, apiPatch } from '../api';
 import NavBar from './NavBar';
 
 ChartJS.register(
@@ -76,6 +76,8 @@ export default function ReportsPage() {
   const [topCategories, setTopCategories] = useState(null);
   const [trends, setTrends] = useState(null);
   const [dailyBreakdown, setDailyBreakdown] = useState(null);
+  const [budgetData, setBudgetData] = useState(null);
+  const [recurringRules, setRecurringRules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -86,17 +88,22 @@ export default function ReportsPage() {
       setLoading(true);
       setError('');
       try {
-        const [summaryRes, categoriesRes, trendsRes, breakdownRes] = await Promise.all([
+        const monthStart = `${selectedMonth}-01`;
+        const [summaryRes, categoriesRes, trendsRes, breakdownRes, budgetRes, rulesRes] = await Promise.all([
           apiGet(`/reports/summary?month=${selectedMonth}`),
           apiGet(`/reports/top-categories?month=${selectedMonth}&limit=5`),
           apiGet(`/reports/trends?months=6`),
           apiGet(`/reports/monthly-breakdown?month=${selectedMonth}`),
+          apiGet(`/budget?month_start=${monthStart}`).catch(() => null),
+          apiGet('/recurring-rules?is_active=true').catch(() => []),
         ]);
         if (!cancelled) {
           setSummary(summaryRes);
           setTopCategories(categoriesRes);
           setTrends(trendsRes);
           setDailyBreakdown(breakdownRes);
+          setBudgetData(budgetRes);
+          setRecurringRules(rulesRes);
         }
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Failed to load reports');
@@ -199,6 +206,27 @@ export default function ReportsPage() {
     interaction: { mode: 'nearest', axis: 'x', intersect: false },
   };
 
+  // -- Budget vs Actual computed values --
+  const hasBudget = budgetData?.total_budget_amount != null;
+  const budgetCategories = budgetData?.category_budgets || [];
+  const incomeCategories = budgetData?.income_budgets || [];
+  const totalBudgetAmount = hasBudget ? Number(budgetData.total_budget_amount) : 0;
+  const totalBudgetSpent = budgetCategories.reduce((sum, c) => sum + Number(c.spent_amount), 0);
+  const totalBudgetRemaining = totalBudgetAmount - totalBudgetSpent;
+  const budgetSpentRatio = totalBudgetAmount > 0 ? totalBudgetSpent / totalBudgetAmount : 0;
+  const fixedExpenses = budgetCategories.filter(c => c.is_fixed);
+  const flexibleExpenses = budgetCategories.filter(c => !c.is_fixed);
+  const fixedIncome = incomeCategories.filter(c => c.is_fixed);
+  const flexibleIncome = incomeCategories.filter(c => !c.is_fixed);
+
+  const toggleRuleActive = async (ruleId, currentlyActive) => {
+    try {
+      await apiPatch(`/recurring-rules/${ruleId}`, { is_active: !currentlyActive });
+      const rules = await apiGet('/recurring-rules?is_active=true').catch(() => []);
+      setRecurringRules(rules);
+    } catch {}
+  };
+
   // -- Daily breakdown bar chart data --
   const breakdownItems = dailyBreakdown?.items || [];
   const barData = {
@@ -295,6 +323,189 @@ export default function ReportsPage() {
                 <span className="summary-sub">Days your money lasts</span>
               </div>
             </div>
+
+            {/* Budget Overview */}
+            {hasBudget && (
+              <div className="reports-budget-overview">
+                <h2 className="card-title" style={{ marginBottom: 16 }}>Budget Overview</h2>
+                <div className="summary-cards">
+                  <div className="summary-card">
+                    <span className="summary-label">Total Budget</span>
+                    <span className="summary-value">{formatMoney(totalBudgetAmount, budgetData?.currency)}</span>
+                  </div>
+                  <div className="summary-card">
+                    <span className="summary-label">Total Spent</span>
+                    <span className="summary-value" style={{ color: '#e74c3c' }}>
+                      {formatMoney(totalBudgetSpent, budgetData?.currency)}
+                    </span>
+                  </div>
+                  <div className="summary-card">
+                    <span className="summary-label">Remaining</span>
+                    <span className="summary-value" style={{ color: totalBudgetRemaining >= 0 ? '#2ecc71' : '#e74c3c' }}>
+                      {totalBudgetRemaining < 0 ? '-' : ''}{formatMoney(Math.abs(totalBudgetRemaining), budgetData?.currency)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Health bar */}
+                <div className="reports-health-bar-container">
+                  <div className="reports-health-bar">
+                    <div
+                      className={`reports-health-fill${budgetSpentRatio >= 1 ? ' danger' : budgetSpentRatio >= 0.8 ? ' warning' : ''}`}
+                      style={{ width: `${Math.min(budgetSpentRatio * 100, 100)}%` }}
+                    />
+                  </div>
+                  <div className="reports-health-labels">
+                    <span>{formatMoney(totalBudgetSpent, budgetData?.currency)} spent</span>
+                    <span>{formatMoney(totalBudgetAmount, budgetData?.currency)} budget</span>
+                  </div>
+                </div>
+
+                {/* Per-category budget vs actual */}
+                {(fixedExpenses.length > 0 || flexibleExpenses.length > 0) && (
+                  <div className="card" style={{ marginTop: 16 }}>
+                    <h3 className="card-title">Expense Categories</h3>
+                    {fixedExpenses.length > 0 && (
+                      <>
+                        <h4 className="reports-budget-group-title">Fixed Expenses</h4>
+                        {fixedExpenses.map(cat => {
+                          const limit = Number(cat.limit_amount);
+                          const spent = Number(cat.spent_amount);
+                          const remaining = limit - spent;
+                          const pct = limit > 0 ? Math.round((spent / limit) * 100) : (spent > 0 ? 100 : 0);
+                          const barWidth = Math.min(pct, 100);
+                          let fillClass = pct >= 100 ? ' danger' : pct >= 80 ? ' warning' : '';
+                          return (
+                            <div key={cat.category_id} className="reports-budget-item">
+                              <div className="reports-budget-item-header">
+                                <span className="reports-budget-category">
+                                  <span className="reports-budget-dot" style={{ backgroundColor: getCategoryColor(cat.category_name, 0) }} />
+                                  {cat.category_name}
+                                </span>
+                                <div className="reports-budget-amounts">
+                                  <span style={{ color: '#e74c3c' }}>{formatMoney(spent, budgetData?.currency)}</span>
+                                  <span style={{ color: '#888' }}> / {formatMoney(limit, budgetData?.currency)}</span>
+                                  <span style={{ color: remaining >= 0 ? '#2ecc71' : '#e74c3c', marginLeft: 8 }}>
+                                    {remaining >= 0 ? `${formatMoney(remaining, budgetData?.currency)} left` : `${formatMoney(Math.abs(remaining), budgetData?.currency)} over`}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="reports-budget-bar-row">
+                                <div className="progress-bar">
+                                  <div className={`progress-fill${fillClass}`} style={{ width: `${barWidth}%`, ...(fillClass === '' ? { backgroundColor: getCategoryColor(cat.category_name, 0) } : {}) }} />
+                                </div>
+                                <span className="reports-budget-pct">{pct}% used</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                    {flexibleExpenses.length > 0 && (
+                      <>
+                        <h4 className="reports-budget-group-title">{fixedExpenses.length > 0 ? 'Flexible Expenses' : ''}</h4>
+                        {flexibleExpenses.map(cat => {
+                          const limit = Number(cat.limit_amount);
+                          const spent = Number(cat.spent_amount);
+                          const remaining = limit - spent;
+                          const pct = limit > 0 ? Math.round((spent / limit) * 100) : (spent > 0 ? 100 : 0);
+                          const barWidth = Math.min(pct, 100);
+                          let fillClass = pct >= 100 ? ' danger' : pct >= 80 ? ' warning' : '';
+                          return (
+                            <div key={cat.category_id} className="reports-budget-item">
+                              <div className="reports-budget-item-header">
+                                <span className="reports-budget-category">
+                                  <span className="reports-budget-dot" style={{ backgroundColor: getCategoryColor(cat.category_name, 0) }} />
+                                  {cat.category_name}
+                                </span>
+                                <div className="reports-budget-amounts">
+                                  <span style={{ color: '#e74c3c' }}>{formatMoney(spent, budgetData?.currency)}</span>
+                                  <span style={{ color: '#888' }}> / {formatMoney(limit, budgetData?.currency)}</span>
+                                  <span style={{ color: remaining >= 0 ? '#2ecc71' : '#e74c3c', marginLeft: 8 }}>
+                                    {remaining >= 0 ? `${formatMoney(remaining, budgetData?.currency)} left` : `${formatMoney(Math.abs(remaining), budgetData?.currency)} over`}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="reports-budget-bar-row">
+                                <div className="progress-bar">
+                                  <div className={`progress-fill${fillClass}`} style={{ width: `${barWidth}%`, ...(fillClass === '' ? { backgroundColor: getCategoryColor(cat.category_name, 0) } : {}) }} />
+                                </div>
+                                <span className="reports-budget-pct">{pct}% used</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Income tracking */}
+                {(fixedIncome.length > 0 || flexibleIncome.length > 0) && (
+                  <div className="card" style={{ marginTop: 16 }}>
+                    <h3 className="card-title">Income Tracking</h3>
+                    {[...fixedIncome, ...flexibleIncome].map(cat => {
+                      const expected = Number(cat.limit_amount);
+                      const received = Number(cat.spent_amount);
+                      const pending = expected - received;
+                      const pct = expected > 0 ? Math.round((received / expected) * 100) : (received > 0 ? 100 : 0);
+                      const barWidth = Math.min(pct, 100);
+                      return (
+                        <div key={cat.category_id} className="reports-budget-item">
+                          <div className="reports-budget-item-header">
+                            <span className="reports-budget-category">
+                              <span className="reports-budget-dot" style={{ backgroundColor: '#2ecc71' }} />
+                              {cat.category_name}
+                            </span>
+                            <div className="reports-budget-amounts">
+                              <span style={{ color: '#2ecc71' }}>{formatMoney(received, budgetData?.currency)}</span>
+                              <span style={{ color: '#888' }}> / {formatMoney(expected, budgetData?.currency)}</span>
+                              <span style={{ color: pending > 0 ? '#888' : '#2ecc71', marginLeft: 8 }}>
+                                {pending > 0 ? `${formatMoney(pending, budgetData?.currency)} pending` : 'Received'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="reports-budget-bar-row">
+                            <div className="progress-bar">
+                              <div className="progress-fill" style={{ width: `${barWidth}%`, backgroundColor: '#2ecc71' }} />
+                            </div>
+                            <span className="reports-budget-pct">{pct}% received</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Recurring Transactions */}
+            {recurringRules.length > 0 && (
+              <div className="card">
+                <h2 className="card-title">Recurring Transactions</h2>
+                <div className="reports-recurring-list">
+                  {recurringRules.map((rule) => (
+                    <div key={rule.id} className="reports-recurring-item">
+                      <div className="reports-recurring-header">
+                        <span className="reports-budget-category">
+                          <span className="reports-budget-dot" style={{ backgroundColor: getCategoryColor(rule.category_name, 0) }} />
+                          {rule.merchant || rule.category_name}
+                          <span className="reports-recurring-badge">{rule.frequency}</span>
+                        </span>
+                        <span className="reports-recurring-amount">{formatMoney(Number(rule.amount), budgetData?.currency || summary?.currency)}</span>
+                      </div>
+                      <div className="reports-recurring-details">
+                        <span>Next: {rule.next_due_date}</span>
+                        <span>{rule.category_name}</span>
+                        <button className="reports-recurring-btn" onClick={() => toggleRuleActive(rule.id, rule.is_active)}>
+                          {rule.is_active ? 'Pause' : 'Resume'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Top Spending Categories */}
             <div className="card">
