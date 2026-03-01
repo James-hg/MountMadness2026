@@ -417,6 +417,15 @@ body {
     margin-bottom: 16px;
 }
 
+.settings-success {
+    background: #eafaea;
+    border: 1.5px solid #2ecc71;
+    border-radius: 12px;
+    color: #27ae60;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+}
+
 .form-group {
     margin-bottom: 18px;
 }
@@ -1935,10 +1944,28 @@ body {
     gap: 2px;
 }
 
+.txn-item-merchant-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
 .txn-item-merchant {
     font-size: 0.9rem;
     font-weight: 500;
     color: #333;
+}
+
+.txn-item-category {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #8e8e8e;
+    background: #f0eef8;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .txn-item-date {

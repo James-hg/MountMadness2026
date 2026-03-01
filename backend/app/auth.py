@@ -53,6 +53,16 @@ class LogoutRequest(BaseModel):
     refresh_token: str | None = None
 
 
+class UpdateProfileRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    email: str | None = Field(default=None, min_length=3, max_length=255)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 def _issue_token(user_id: UUID, token_type: str, ttl: timedelta) -> tuple[str, UUID, datetime]:
     now = datetime.now(timezone.utc)
     jti = uuid4()
@@ -319,6 +329,90 @@ async def me(
         raise HTTPException(status_code=404, detail="User not found")
 
     return AuthUserResponse.model_validate(user_row)
+
+
+@router.patch("/me", response_model=AuthUserResponse)
+async def update_profile(
+    payload: UpdateProfileRequest,
+    user_id: UUID = Depends(get_current_user_id),
+    connection: AsyncConnection = Depends(get_db_connection),
+) -> AuthUserResponse:
+    if payload.name is None and payload.email is None:
+        raise HTTPException(status_code=422, detail="No fields to update")
+
+    updates = []
+    params = []
+
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="Name is required")
+        updates.append("name = %s")
+        params.append(name)
+
+    if payload.email is not None:
+        email = _normalize_email(payload.email)
+        updates.append("email = %s")
+        params.append(email)
+
+    params.append(user_id)
+
+    async with connection.cursor() as cursor:
+        try:
+            await cursor.execute(
+                f"""
+                UPDATE users
+                SET {', '.join(updates)}
+                WHERE id = %s
+                RETURNING id, name, email, created_at
+                """,
+                tuple(params),
+            )
+        except UniqueViolation as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="An account with this email already exists",
+            ) from exc
+
+        user_row = await cursor.fetchone()
+
+    if user_row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return AuthUserResponse.model_validate(user_row)
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordRequest,
+    user_id: UUID = Depends(get_current_user_id),
+    connection: AsyncConnection = Depends(get_db_connection),
+) -> dict:
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            SELECT id FROM users
+            WHERE id = %s
+              AND password_hash = crypt(%s, password_hash)
+            """,
+            (user_id, payload.current_password),
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            UPDATE users
+            SET password_hash = crypt(%s, gen_salt('bf', 12))
+            WHERE id = %s
+            """,
+            (payload.new_password, user_id),
+        )
+
+    return {"message": "Password updated successfully"}
 
 
 @router.post("/logout", status_code=204)
