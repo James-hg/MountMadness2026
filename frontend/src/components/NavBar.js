@@ -43,7 +43,7 @@ export default function NavBar() {
           {initial}
         </button>
         <div className={`profile-dropdown ${dropdownOpen ? 'open' : ''}`}>
-          <button className="profile-dropdown-item" disabled>
+          <button className="profile-dropdown-item" onClick={() => { setDropdownOpen(false); navigate('/settings'); }}>
             {user?.name || 'User'}
           </button>
           <button className="profile-dropdown-item logout" onClick={handleLogout}>
