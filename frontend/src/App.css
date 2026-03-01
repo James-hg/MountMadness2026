@@ -2701,10 +2701,37 @@ body {
     padding: 12px 0 6px 0;
     border-bottom: 1px solid #e0e0e0;
     margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
 }
 
 .txn-date-header:first-child {
     padding-top: 0;
+}
+
+.txn-group-summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.txn-list-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 0 6px 0;
+    border-top: 2px solid #e0e0e0;
+    margin-top: 8px;
+}
+
+.txn-list-total-label {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #222;
 }
 
 .txn-item {
