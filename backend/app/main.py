@@ -4,6 +4,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .budget import router as budget_router
 from .config import settings
 from .database import close_db_pool, init_db_pool
 from .transactions import router as transactions_router
@@ -18,6 +19,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.include_router(transactions_router)
+app.include_router(budget_router)
 
 
 class PromptRequest(BaseModel):
