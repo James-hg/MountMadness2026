@@ -81,7 +81,6 @@ yarn-error.log*
 *.tar.gz
 *.rar
 
-<<<<<<< HEAD
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
@@ -91,9 +90,3 @@ ai/.env
 ai/.venv/
 ai/__pycache__/
 ai/src/__pycache__/
-=======
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
->>>>>>> 7fd4943196ad86ec5a060ca112c43c0dfdc0649f
