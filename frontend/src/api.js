@@ -122,14 +122,13 @@ export async function apiUpload(path, formData) {
 }
 
 export async function apiPatch(path, body) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await request(path, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Request failed (${res.status})`);
+    throw new Error(await parseErrorResponse(res));
   }
   return res.json();
 }
@@ -151,5 +150,14 @@ export async function apiGet(path) {
   if (!res.ok) {
     throw new Error(await parseErrorResponse(res));
   }
+  return res.json();
+}
+
+export async function apiDelete(path) {
+  const res = await request(path, { method: 'DELETE' });
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  if (res.status === 204) return null;
   return res.json();
 }

@@ -90,6 +90,8 @@ const SORT_LABELS = {
   amount_asc: 'Low → High',
   merchant_asc: 'A → Z',
   merchant_desc: 'Z → A',
+  category_asc: 'A → Z',
+  category_desc: 'Z → A',
 };
 
 function formatRangeDate(dateStr) {
@@ -118,6 +120,8 @@ export default function TransactionsPage() {
   const [formCategoryId, setFormCategoryId] = useState('');
   const [formMerchant, setFormMerchant] = useState('');
   const [formNote, setFormNote] = useState('');
+  const [formRecurring, setFormRecurring] = useState(false);
+  const [formFrequency, setFormFrequency] = useState('monthly');
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -210,6 +214,8 @@ export default function TransactionsPage() {
     setFormCategoryId('');
     setFormMerchant('');
     setFormNote('');
+    setFormRecurring(false);
+    setFormFrequency('monthly');
     setFormError('');
   };
 
@@ -271,14 +277,19 @@ export default function TransactionsPage() {
 
     setFormSaving(true);
     try {
-      await apiPost('/transactions', {
+      const body = {
         type: formType,
         amount: formAmount,
         occurred_on: formDate,
         category_id: formCategoryId,
         merchant: formMerchant || null,
         note: formNote || null,
-      });
+      };
+      if (formRecurring) {
+        body.make_recurring = true;
+        body.recurring_frequency = formFrequency;
+      }
+      await apiPost('/transactions', body);
       resetForm();
       setShowForm(false);
       fetchTransactions();
@@ -420,6 +431,21 @@ export default function TransactionsPage() {
                   <input type="text" placeholder="Optional note..." value={formNote} onChange={(e) => setFormNote(e.target.value)} />
                 </div>
               </div>
+              <div className="form-row" style={{ alignItems: 'center', gap: 16 }}>
+                <label className="recurring-toggle-label">
+                  <input type="checkbox" checked={formRecurring} onChange={(e) => setFormRecurring(e.target.checked)} />
+                  Make this recurring
+                </label>
+                {formRecurring && (
+                  <div className="form-group" style={{ marginBottom: 0, minWidth: 160 }}>
+                    <select className="form-select" value={formFrequency} onChange={(e) => setFormFrequency(e.target.value)}>
+                      <option value="monthly">Monthly</option>
+                      <option value="biweekly">Every 2 Weeks</option>
+                      <option value="weekly">Weekly</option>
+                    </select>
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <button className="primary-btn" disabled={formSaving || uploading}>
                   {formSaving ? 'Saving...' : 'Save Transaction'}
@@ -536,6 +562,7 @@ export default function TransactionsPage() {
                 { label: 'Date', options: [{ value: 'date_desc', label: 'Newest' }, { value: 'date_asc', label: 'Oldest' }] },
                 { label: 'Amount', options: [{ value: 'amount_desc', label: 'High → Low' }, { value: 'amount_asc', label: 'Low → High' }] },
                 { label: 'Merchant', options: [{ value: 'merchant_asc', label: 'A → Z' }, { value: 'merchant_desc', label: 'Z → A' }] },
+                { label: 'Category', options: [{ value: 'category_asc', label: 'A → Z' }, { value: 'category_desc', label: 'Z → A' }] },
               ].map((group) => (
                 <div key={group.label} className="txn-filter-group">
                   <label>{group.label}</label>
@@ -625,6 +652,8 @@ export default function TransactionsPage() {
                           const displayMerchant = isEditing ? (editMerchant || editNote || 'Transaction') : (t.merchant || t.note || 'Transaction');
                           const displayDate = isEditing ? editDate : t.occurred_on;
                           const displayAmount = Math.abs(isEditing ? (Number(editAmount) || 0) : Number(t.amount));
+                          const cat = categories.find(c => c.id === t.category_id);
+                          const categoryName = cat ? cat.name : null;
                           return (
                             <div key={t.id} className={isEditing ? 'txn-item-wrapper' : ''}>
                               <div className="txn-item" onClick={() => !isEditing && startEditing(t)} style={{ cursor: isEditing ? 'default' : 'pointer' }}>
@@ -633,7 +662,11 @@ export default function TransactionsPage() {
                                     {displayType === 'income' ? '+' : '-'}
                                   </span>
                                   <div className="txn-item-details">
-                                    <span className="txn-item-merchant">{displayMerchant}</span>
+                                    <div className="txn-item-merchant-row">
+                                      <span className="txn-item-merchant">{displayMerchant}</span>
+                                      {t.recurring_rule_id && <span className="recurring-badge">recurring</span>}
+                                      {categoryName && <span className="txn-item-category">{categoryName}</span>}
+                                    </div>
                                     <span className="txn-item-date">{displayDate}</span>
                                   </div>
                                 </div>
@@ -839,6 +872,8 @@ export default function TransactionsPage() {
                           const displayType = isEditing ? editType : t.type;
                           const displayMerchant = isEditing ? (editMerchant || editNote || 'Transaction') : (t.merchant || t.note || 'Transaction');
                           const displayAmount = Math.abs(isEditing ? (Number(editAmount) || 0) : Number(t.amount));
+                          const calCat = categories.find(c => c.id === t.category_id);
+                          const calCategoryName = calCat ? calCat.name : null;
                           return (
                             <div key={t.id} className={isEditing ? 'txn-item-wrapper' : ''}>
                               <div className="calendar-txn-item" onClick={() => !isEditing && startEditing(t)} style={{ cursor: isEditing ? 'default' : 'pointer' }}>
@@ -847,6 +882,7 @@ export default function TransactionsPage() {
                                     {displayType === 'income' ? '+' : '-'}
                                   </span>
                                   <span className="calendar-txn-merchant">{displayMerchant}</span>
+                                  {calCategoryName && <span className="txn-item-category">{calCategoryName}</span>}
                                 </div>
                                 <span className={`calendar-txn-amount ${displayType}`}>
                                   {displayType === 'income' ? '+' : '-'}${displayAmount.toFixed(2)}
