@@ -42,6 +42,7 @@ class BudgetMonthResponse(BaseModel):
     currency: str | None
     allocation_strategy: str | None
     category_budgets: list[BudgetCategoryOut]
+    income_budgets: list[BudgetCategoryOut] = []
 
     @field_serializer("total_budget_amount", when_used="always")
     def serialize_total(self, value: Decimal | None) -> str | None:
@@ -109,6 +110,50 @@ async def _get_visible_expense_categories(connection: AsyncConnection, user_id: 
             (user_id,),
         )
         return await cursor.fetchall()
+
+
+async def _get_visible_income_categories(connection: AsyncConnection, user_id: UUID) -> list[dict]:
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            SELECT id, name, slug
+            FROM categories
+            WHERE kind = 'income'
+              AND (is_system = TRUE OR user_id = %s)
+            ORDER BY name ASC
+            """,
+            (user_id,),
+        )
+        return await cursor.fetchall()
+
+
+async def _validate_budget_category_for_user(
+    connection: AsyncConnection,
+    user_id: UUID,
+    category_id: UUID,
+) -> dict:
+    """Validate a single category (expense or income) for budget upsert."""
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            SELECT id, name, slug, kind, user_id, is_system
+            FROM categories
+            WHERE id = %s
+            """,
+            (category_id,),
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Category not found: {category_id}")
+
+    if not row["is_system"] and row["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden category access")
+
+    if row["kind"] not in ("expense", "income"):
+        raise HTTPException(status_code=409, detail="Budget allocation supports expense and income categories only")
+
+    return {"id": row["id"], "name": row["name"], "slug": row["slug"], "kind": row["kind"]}
 
 
 async def _validate_expense_categories_for_user(
@@ -352,6 +397,7 @@ async def _fetch_month_budget_rows(
                 ON ufc.user_id = b.user_id AND ufc.category_id = b.category_id
             WHERE b.user_id = %s
               AND b.month_start = %s
+              AND c.kind = 'expense'
             ORDER BY c.name ASC
             """,
             (user_id, period_start, period_end, user_id, month_start),
@@ -359,15 +405,51 @@ async def _fetch_month_budget_rows(
         return await cursor.fetchall()
 
 
-async def _fetch_budget_snapshot(
+async def _fetch_income_budget_rows(
     connection: AsyncConnection,
     user_id: UUID,
     month_start: date,
-) -> BudgetMonthResponse:
-    total_row = await _fetch_month_total(connection, user_id, month_start)
-    rows = await _fetch_month_budget_rows(connection, user_id, month_start)
+) -> list[dict]:
+    period_start, period_end = month_window(month_start)
 
-    category_budgets = [
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            WITH month_income AS (
+                SELECT t.category_id, COALESCE(SUM(t.amount), 0) AS received_amount
+                FROM transactions t
+                WHERE t.user_id = %s
+                  AND t.type = 'income'
+                  AND t.deleted_at IS NULL
+                  AND t.occurred_on BETWEEN %s AND %s
+                GROUP BY t.category_id
+            )
+            SELECT
+                b.category_id,
+                c.name AS category_name,
+                b.limit_amount,
+                COALESCE(mi.received_amount, 0) AS spent_amount,
+                b.limit_amount - COALESCE(mi.received_amount, 0) AS remaining_amount,
+                b.is_user_modified,
+                b.currency,
+                CASE WHEN ufc.id IS NOT NULL THEN TRUE ELSE FALSE END AS is_fixed
+            FROM budgets b
+            JOIN categories c ON c.id = b.category_id
+            LEFT JOIN month_income mi ON mi.category_id = b.category_id
+            LEFT JOIN user_fixed_categories ufc
+                ON ufc.user_id = b.user_id AND ufc.category_id = b.category_id
+            WHERE b.user_id = %s
+              AND b.month_start = %s
+              AND c.kind = 'income'
+            ORDER BY c.name ASC
+            """,
+            (user_id, period_start, period_end, user_id, month_start),
+        )
+        return await cursor.fetchall()
+
+
+def _rows_to_budget_out(rows: list[dict]) -> list[BudgetCategoryOut]:
+    return [
         BudgetCategoryOut(
             category_id=row["category_id"],
             category_name=row["category_name"],
@@ -380,12 +462,23 @@ async def _fetch_budget_snapshot(
         for row in rows
     ]
 
+
+async def _fetch_budget_snapshot(
+    connection: AsyncConnection,
+    user_id: UUID,
+    month_start: date,
+) -> BudgetMonthResponse:
+    total_row = await _fetch_month_total(connection, user_id, month_start)
+    rows = await _fetch_month_budget_rows(connection, user_id, month_start)
+    income_rows = await _fetch_income_budget_rows(connection, user_id, month_start)
+
     return BudgetMonthResponse(
         month_start=month_start,
         total_budget_amount=(quantize_money(total_row["total_budget_amount"]) if total_row else None),
         currency=(total_row["currency"] if total_row else None),
         allocation_strategy=(total_row["allocation_strategy"] if total_row else None),
-        category_budgets=category_budgets,
+        category_budgets=_rows_to_budget_out(rows),
+        income_budgets=_rows_to_budget_out(income_rows),
     )
 
 
@@ -526,9 +619,8 @@ async def put_budget_category(
     """
     month_start = validate_month_start(payload.month_start)
 
-    # Validation call enforces visibility and expense-only constraints.
-    scope_rows = await _validate_expense_categories_for_user(connection, user_id, [payload.category_id])
-    _ = scope_rows  # Explicitly acknowledge validation-only usage.
+    # Validate visibility and kind (expense or income).
+    cat_info = await _validate_budget_category_for_user(connection, user_id, payload.category_id)
     currency = await _get_user_currency(connection, user_id)
 
     async with connection.transaction():
@@ -547,7 +639,11 @@ async def put_budget_category(
                 (user_id, payload.category_id, month_start, quantize_money(payload.limit_amount), currency),
             )
 
-    rows = await _fetch_month_budget_rows(connection, user_id, month_start)
+    # Look up the row from the correct source based on category kind.
+    if cat_info["kind"] == "income":
+        rows = await _fetch_income_budget_rows(connection, user_id, month_start)
+    else:
+        rows = await _fetch_month_budget_rows(connection, user_id, month_start)
     row = next((item for item in rows if item["category_id"] == payload.category_id), None)
 
     if row is None:

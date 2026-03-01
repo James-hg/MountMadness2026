@@ -405,7 +405,7 @@ export default function TransactionsPage() {
                 </div>
                 <div className="form-group">
                   <label>Amount</label>
-                  <input type="number" step="0.01" min="0.01" placeholder="0.00" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} />
+                  <input type="number" step="0.01" min="0.01" placeholder="0.00" value={formAmount} onChange={(e) => { const v = e.target.value; setFormAmount(v !== '' && Number(v) < 0 ? '' : v); }} />
                 </div>
                 <div className="form-group">
                   <label>Date</label>
@@ -540,8 +540,9 @@ export default function TransactionsPage() {
                     className="txn-search-input"
                     placeholder="Min"
                     min="0"
+                    step="0.01"
                     value={amountMin}
-                    onChange={(e) => setAmountMin(e.target.value)}
+                    onChange={(e) => { const v = e.target.value; setAmountMin(v !== '' && Number(v) < 0 ? '' : v); }}
                   />
                   <span className="txn-range-sep">–</span>
                   <input
@@ -549,8 +550,9 @@ export default function TransactionsPage() {
                     className="txn-search-input"
                     placeholder="Max"
                     min="0"
+                    step="0.01"
                     value={amountMax}
-                    onChange={(e) => setAmountMax(e.target.value)}
+                    onChange={(e) => { const v = e.target.value; setAmountMax(v !== '' && Number(v) < 0 ? '' : v); }}
                   />
                 </div>
               </div>
