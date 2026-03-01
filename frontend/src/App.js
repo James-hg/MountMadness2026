@@ -9,6 +9,7 @@ import ReportsPage from './components/ReportsPage';
 import BudgetPage from './components/BudgetPage';
 import SettingsPage from './components/SettingsPage';
 import CategoriesPage from './components/CategoriesPage';
+import CalendarPage from './components/CalendarPage';
 
 function App() {
   return (
@@ -61,6 +62,14 @@ function App() {
           element={
             <ProtectedRoute>
               <CategoriesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/calendar"
+          element={
+            <ProtectedRoute>
+              <CalendarPage />
             </ProtectedRoute>
           }
         />
