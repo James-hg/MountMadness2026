@@ -16,6 +16,7 @@ function saveSession(data) {
 }
 
 function clearSession() {
+<<<<<<< HEAD
   try {
     Object.keys(localStorage)
       .filter((key) => key.startsWith('mm_chat_widget_'))
@@ -23,6 +24,8 @@ function clearSession() {
   } catch {
     // Ignore storage errors.
   }
+=======
+>>>>>>> master
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');

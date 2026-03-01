@@ -199,6 +199,7 @@ def test_ai_chat_invalid_tool_args_returns_clarification(client_with_overrides, 
     assert "I need a bit more detail" in data["reply"]
 
 
+<<<<<<< HEAD
 def test_ai_chat_dedupes_duplicate_write_tool_calls(client_with_overrides, monkeypatch) -> None:
     client, _user_id = client_with_overrides
     _install_memory_stubs(monkeypatch)
@@ -258,6 +259,8 @@ def test_ai_chat_dedupes_duplicate_write_tool_calls(client_with_overrides, monke
     assert data["actions"][0]["tool"] == "create_transaction"
 
 
+=======
+>>>>>>> master
 def test_ai_chat_requires_auth(monkeypatch) -> None:
     monkeypatch.setattr(ai_router.settings, "gemini_api_key", "test-key")
     test_app = FastAPI()
