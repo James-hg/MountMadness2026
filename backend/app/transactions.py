@@ -1,14 +1,19 @@
+import base64
+import json
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
 from psycopg import AsyncConnection
 from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
 from .auth import get_current_user_id
 from .database import get_db_connection
+from .categories import CategoryOut
+from .config import settings
 
 router = APIRouter(tags=["transactions"])
 
@@ -76,6 +81,22 @@ class TransactionResponse(BaseModel):
     note: str | None
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("amount")
+    def serialize_amount(self, value: Decimal) -> str:
+        return _money(value)
+
+
+class TransactionUploadResponse(BaseModel):
+    # Fields extracted from the receipt for user confirmation
+    merchant: str
+    amount: Amount
+    occurred_on: date
+    category_id: UUID | None
+    note: str | None
+
+    # Data to help the frontend build a confirmation form
+    all_expense_categories: list[CategoryOut]
 
     @field_serializer("amount")
     def serialize_amount(self, value: Decimal) -> str:
@@ -264,6 +285,121 @@ async def create_transaction(
         row = await cursor.fetchone()
 
     return TransactionResponse.model_validate(row)
+
+
+@router.post("/transactions/upload", response_model=TransactionUploadResponse, status_code=200)
+async def upload_transaction_receipt(
+    file: UploadFile = File(...),
+    user_id: UUID = Depends(get_current_user_id),
+    connection: AsyncConnection = Depends(get_db_connection),
+) -> TransactionUploadResponse:
+    if not settings.gemini_api_key:
+        raise HTTPException(status_code=501, detail="Gemini API key is not configured")
+
+    if file.content_type not in ["application/pdf", "image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and Images are supported.")
+
+    # 1. Read and encode file
+    file_content = await file.read()
+    encoded_data = base64.b64encode(file_content).decode("utf-8")
+
+    # 2. Get categories to help AI match and for the response
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            SELECT id, user_id, name, slug, kind, icon, color, is_system, created_at
+            FROM categories 
+            WHERE (is_system = TRUE OR user_id = %s) AND kind = 'expense'
+            ORDER BY name
+            """,
+            (user_id,)
+        )
+        cat_rows = await cursor.fetchall()
+    
+    all_expense_categories = [CategoryOut.model_validate(row) for row in cat_rows]
+    cat_map = {cat.name.lower(): cat.id for cat in all_expense_categories}
+    cat_list_str = ", ".join(cat_map.keys())
+
+    # 3. Call Gemini API
+    prompt = f"""
+    Analyze this receipt or bill. Extract the following fields in JSON format:
+    - merchant (string): Name of the store or biller.
+    - date (string): Transaction date in YYYY-MM-DD format. If not found, use today's date {date.today()}.
+    - amount (float): The total amount paid.
+    - category (string): Choose the best match from this list: [{cat_list_str}]. If unsure, pick the first one.
+    
+    Return ONLY raw JSON.
+    """
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
+    params = {"key": settings.gemini_api_key}
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {
+                    "inline_data": {
+                        "mime_type": file.content_type,
+                        "data": encoded_data
+                    }
+                }
+            ]
+        }]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, params=params, json=payload)
+    except httpx.RequestError as exc:
+        # network error or timeout
+        raise HTTPException(status_code=502, detail=f"AI provider request failed: {str(exc)}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="AI provider timeout")
+
+    if response.status_code != 200:
+        # log response content for debugging and surface in error
+        try:
+            body = response.text
+        except Exception:
+            body = '<unreadable body>'
+        print(f"AI provider returned {response.status_code}: {body}")
+        raise HTTPException(status_code=502, detail=f"AI provider error ({response.status_code}): {body}")
+
+    # 4. Parse AI Response
+    try:
+        ai_data = response.json()
+        text_resp = ai_data["candidates"][0]["content"]["parts"][0]["text"]
+        # Strip markdown code blocks if present
+        if "```json" in text_resp:
+            text_resp = text_resp.split("```json")[1].split("```")[0]
+        elif "```" in text_resp:
+            text_resp = text_resp.split("```")[1].split("```")[0]
+        
+        extracted = json.loads(text_resp)
+        
+        merchant = extracted.get("merchant", "Unknown Merchant")
+        amount = Decimal(str(extracted.get("amount", 0)))
+        occurred_on = extracted.get("date", date.today().isoformat())
+        category_name = extracted.get("category", "").lower()
+        
+        # Fallback to first category if match fails
+        category_id = cat_map.get(category_name)
+        if not category_id and all_expense_categories:
+            # Fallback to the first category in the list if AI fails to match
+            category_id = all_expense_categories[0].id
+            
+    except (KeyError, IndexError, json.JSONDecodeError, ValueError, Exception) as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract valid data from receipt: {str(e)}")
+
+    # 5. Return extracted data for confirmation
+    return TransactionUploadResponse(
+        merchant=merchant,
+        amount=amount,
+        occurred_on=date.fromisoformat(occurred_on),
+        category_id=category_id,
+        note="Imported from receipt",
+        all_expense_categories=all_expense_categories,
+    )
 
 
 ALLOWED_SORTS = {
