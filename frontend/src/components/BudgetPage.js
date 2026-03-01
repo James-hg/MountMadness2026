@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import NavBar from './NavBar';
-import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '../api';
+import { apiGet, apiPost, apiPut, apiDelete } from '../api';
 
 function toMonthStart(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
@@ -68,8 +68,6 @@ export default function BudgetPage() {
   const [selectedIncomeCatId, setSelectedIncomeCatId] = useState('');
   const [incomeTargetAmount, setIncomeTargetAmount] = useState('');
 
-  // Recurring rules
-  const [recurringRules, setRecurringRules] = useState([]);
 
   // Allocation mode: 'dollar' or 'percent'
   const [allocMode, setAllocMode] = useState('dollar');
@@ -316,23 +314,6 @@ export default function BudgetPage() {
     }
   };
 
-  const fetchRecurringRules = useCallback(async () => {
-    try {
-      const rules = await apiGet('/recurring-rules?is_active=true');
-      setRecurringRules(rules);
-    } catch {
-      setRecurringRules([]);
-    }
-  }, []);
-
-  // Generate due recurring transactions, then refresh data
-  useEffect(() => {
-    const run = async () => {
-      try { await apiPost('/recurring-rules/generate', {}); } catch {}
-      fetchRecurringRules();
-    };
-    run();
-  }, [monthStart, fetchRecurringRules]);
 
   const toggleFixed = async (categoryId, currentlyFixed) => {
     try {
@@ -345,12 +326,6 @@ export default function BudgetPage() {
     } catch {}
   };
 
-  const toggleRuleActive = async (ruleId, currentlyActive) => {
-    try {
-      await apiPatch(`/recurring-rules/${ruleId}`, { is_active: !currentlyActive });
-      await fetchRecurringRules();
-    } catch {}
-  };
 
   // Computed values
   const categories = budget?.category_budgets || [];
@@ -370,13 +345,7 @@ export default function BudgetPage() {
   const spentRatio = totalBudget > 0 ? totalSpent / totalBudget : 0;
 
   const renderSectionHeader = ({ title, subtitle, totals, labels, showModeToggle = true }) => {
-    const budgetLabel = labels?.budget || 'Budget';
-    const spentLabel = labels?.spent || 'Spent';
-    const defaultRemainingLabel = totals.remaining >= 0 ? 'Left' : 'Over';
-    const remainingLabel = labels?.remaining || defaultRemainingLabel;
-    const remainingValue = Math.abs(totals.remaining).toFixed(2);
-    const remainingClass = totals.remaining >= 0 ? 'positive' : 'negative';
-    const spentClass = labels?.spentClass || 'spent';
+    const budgetLabel = labels?.budget || 'Allocated';
 
     return (
       <div className="budget-card-header">
@@ -389,18 +358,6 @@ export default function BudgetPage() {
             <span className="budget-section-stat-label">{budgetLabel}</span>
             <span className="budget-section-stat-value">
               ${totals.budget.toFixed(2)}
-            </span>
-          </div>
-          <div className="budget-section-stat">
-            <span className="budget-section-stat-label">{spentLabel}</span>
-            <span className={`budget-section-stat-value ${spentClass}`}>
-              ${totals.spent.toFixed(2)}
-            </span>
-          </div>
-          <div className="budget-section-stat">
-            <span className="budget-section-stat-label">{remainingLabel}</span>
-            <span className={`budget-section-stat-value ${remainingClass}`}>
-              ${remainingValue}
             </span>
           </div>
         </div>
@@ -421,17 +378,8 @@ export default function BudgetPage() {
   };
 
   const renderBudgetItem = (cat) => {
-    const limit = Number(cat.limit_amount);
-    const spent = Number(cat.spent_amount);
-    const remaining = limit - spent;
-    const pct = limit > 0 ? Math.round((spent / limit) * 100) : (spent > 0 ? 100 : 0);
-    const barWidth = Math.min(pct, 100);
     const isSaving = savingCatId === cat.category_id;
     const catColor = getCategoryColor(cat.category_name);
-
-    let fillClass = '';
-    if (pct >= 100) fillClass = ' danger';
-    else if (pct >= 80) fillClass = ' warning';
 
     return (
       <div key={cat.category_id} className="budget-item">
@@ -448,14 +396,6 @@ export default function BudgetPage() {
               {cat.is_fixed ? '\u{1F4CC}' : '\u{1F4CD}'}
             </button>
           </span>
-          <div className="budget-amounts-group">
-            <span className="budget-amounts" style={{ color: '#e74c3c' }}>
-              -${spent.toFixed(2)}
-            </span>
-            <span className="budget-amounts" style={{ color: remaining >= 0 ? '#2ecc71' : '#e74c3c' }}>
-              {remaining >= 0 ? `$${remaining.toFixed(2)} left` : `-$${Math.abs(remaining).toFixed(2)} over`}
-            </span>
-          </div>
         </div>
         <div className="budget-allocator-row">
           <label className="budget-allocator-label">{allocMode === 'percent' ? '%' : 'Limit'}</label>
@@ -482,37 +422,16 @@ export default function BudgetPage() {
           )}
           {isSaving && <span className="budget-saving-indicator">saving...</span>}
           <span className="budget-available-label">
-            {focusedCatId === cat.category_id
-              ? (allocMode === 'percent' && totalBudget > 0
-                  ? `${((Math.max(0, unallocated) / totalBudget) * 100).toFixed(1)}% available fund`
-                  : `$${Math.max(0, unallocated).toFixed(2)} available fund`)
-              : (remaining >= 0
-                  ? `$${remaining.toFixed(2)} left`
-                  : `-$${Math.abs(remaining).toFixed(2)} over`)}
+            {allocMode === 'percent' && totalBudget > 0
+              ? `${((Math.max(0, unallocated) / totalBudget) * 100).toFixed(1)}% available`
+              : `$${Math.max(0, unallocated).toFixed(2)} available`}
           </span>
-        </div>
-        <div className="budget-progress-row">
-          <div className="progress-bar">
-            <div
-              className={`progress-fill${fillClass}`}
-              style={{
-                width: `${barWidth}%`,
-                ...(fillClass === '' ? { backgroundColor: catColor } : {}),
-              }}
-            />
-          </div>
-          <span className="budget-percent">{pct}% used</span>
         </div>
       </div>
     );
   };
 
   const renderIncomeItem = (cat) => {
-    const expected = Number(cat.limit_amount);
-    const received = Number(cat.spent_amount);
-    const remaining = expected - received;
-    const pct = expected > 0 ? Math.round((received / expected) * 100) : (received > 0 ? 100 : 0);
-    const barWidth = Math.min(pct, 100);
     const isSaving = savingCatId === cat.category_id;
     const catColor = '#2ecc71';
 
@@ -531,14 +450,6 @@ export default function BudgetPage() {
               {cat.is_fixed ? '\u{1F4CC}' : '\u{1F4CD}'}
             </button>
           </span>
-          <div className="budget-amounts-group">
-            <span className="budget-amounts" style={{ color: '#2ecc71' }}>
-              +${received.toFixed(2)}
-            </span>
-            <span className="budget-amounts" style={{ color: remaining > 0 ? '#888' : '#2ecc71' }}>
-              {remaining > 0 ? `$${remaining.toFixed(2)} pending` : 'Received'}
-            </span>
-          </div>
         </div>
         <div className="budget-allocator-row">
           <label className="budget-allocator-label">Expected</label>
@@ -564,21 +475,6 @@ export default function BudgetPage() {
             </div>
           )}
           {isSaving && <span className="budget-saving-indicator">saving...</span>}
-          <span className="budget-available-label">
-            {remaining > 0 ? `$${remaining.toFixed(2)} pending` : 'Fully received'}
-          </span>
-        </div>
-        <div className="budget-progress-row">
-          <div className="progress-bar">
-            <div
-              className="progress-fill"
-              style={{
-                width: `${barWidth}%`,
-                backgroundColor: '#2ecc71',
-              }}
-            />
-          </div>
-          <span className="budget-percent">{pct}% received</span>
         </div>
       </div>
     );
@@ -725,7 +621,7 @@ export default function BudgetPage() {
               title: 'Fixed Income',
               subtitle: 'Auto-carried forward each month',
               totals: getSectionTotals(fixedIncome),
-              labels: { budget: 'Expected', spent: 'Received', remaining: 'Pending', spentClass: 'positive' },
+              labels: { budget: 'Expected' },
               showModeToggle: false,
             })}
             <div className="budget-list">
@@ -740,7 +636,7 @@ export default function BudgetPage() {
             {renderSectionHeader({
               title: 'Expected Income',
               totals: getSectionTotals(flexibleIncome),
-              labels: { budget: 'Expected', spent: 'Received', remaining: 'Pending', spentClass: 'positive' },
+              labels: { budget: 'Expected' },
               showModeToggle: false,
             })}
             <div className="budget-list">
@@ -786,36 +682,6 @@ export default function BudgetPage() {
                 </form>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Recurring Transactions Panel */}
-        {recurringRules.length > 0 && (
-          <div className="budget-categories-card">
-            <div className="budget-card-header">
-              <h2 className="card-title">Recurring Transactions</h2>
-            </div>
-            <div className="budget-list">
-              {recurringRules.map((rule) => (
-                <div key={rule.id} className="budget-item recurring-rule-item">
-                  <div className="budget-item-header">
-                    <span className="budget-category">
-                      <span className="budget-category-dot" style={{ backgroundColor: getCategoryColor(rule.category_name) }} />
-                      {rule.merchant || rule.category_name}
-                      <span className="recurring-freq-badge">{rule.frequency}</span>
-                    </span>
-                    <span className="budget-amounts">${Number(rule.amount).toFixed(2)}</span>
-                  </div>
-                  <div className="recurring-rule-details">
-                    <span>Next: {rule.next_due_date}</span>
-                    <span>{rule.category_name}</span>
-                    <button className="recurring-pause-btn" onClick={() => toggleRuleActive(rule.id, rule.is_active)}>
-                      {rule.is_active ? 'Pause' : 'Resume'}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
