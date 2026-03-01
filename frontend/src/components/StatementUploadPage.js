@@ -41,33 +41,27 @@ export default function StatementUploadPage() {
     formData.append('file', fileToUpload);
 
     try {
-      const response = await fetch(`${API_BASE}/transactions/upload-statement`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.detail || 'Failed to process statement.');
-      }
-
-      const data = await response.json();
-      // Give each extracted item a unique temp ID for state management
-      const itemsWithIds = data.extracted_transactions.map((item, index) => ({
+    const data = await apiUpload('/transactions/upload-statement', formData);
+    const allCategories = data.all_expense_categories || [];
+    const itemsWithIds = data.extracted_transactions.map((item, index) => {
+        const matchedCat = allCategories.find( 
+            cat => cat.name.toLowerCase() === (item.category || '').toLowerCase()
+        );
+        return { 
         ...item,
         id: `temp-${index}`,
-        category_id: '', // Default to empty category
-        include: true, // Default to include
-      }));
-      setExtracted(itemsWithIds);
-      setCategories(data.all_expense_categories || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+        category_id: matchedCat ? matchedCat.id : null,
+        include: true,
+        };
+    });
+    setExtracted(itemsWithIds);
+    setCategories(data.all_expense_categories || []);
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
   };
 
   const handleItemChange = (id, field, value) => {
@@ -86,7 +80,7 @@ export default function StatementUploadPage() {
       .map(item => ({
         type: 'expense',
         amount: item.amount,
-        occurred_on: item.occurred_on,
+        occurred_on: item.date,
         category_id: item.category_id,
         merchant: item.merchant,
         note: `Imported from ${file.name}`,
@@ -195,7 +189,7 @@ export default function StatementUploadPage() {
                           onChange={e => handleItemChange(item.id, 'include', e.target.checked)}
                         />
                       </td>
-                      <td><input type="date" value={item.occurred_on} onChange={e => handleItemChange(item.id, 'occurred_on', e.target.value)} className="import-table-input" /></td>
+                      <td><input type="date" value={item.date} onChange={e => handleItemChange(item.id, 'occurred_on', e.target.value)} className="import-table-input" /></td>
                       <td><input type="text" value={item.merchant} onChange={e => handleItemChange(item.id, 'merchant', e.target.value)} className="import-table-input" /></td>
                       <td><input type="number" step="0.01" value={item.amount} onChange={e => handleItemChange(item.id, 'amount', e.target.value)} className="import-table-input" /></td>
                       <td>

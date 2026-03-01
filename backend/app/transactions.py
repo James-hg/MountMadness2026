@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated, Literal
@@ -8,7 +9,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
 from psycopg import AsyncConnection
-from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator, ConfigDict
 
 from .auth import get_current_user_id
 from .database import get_db_connection
@@ -109,7 +110,10 @@ class StatementTransactionItem(BaseModel):
     # For one extracted transaction from a statement
     merchant: str
     amount: Amount
-    occurred_on: date
+    occurred_on: date = Field(alias="date")
+    category: str | None = None  # category name from AI, may not match exactly with user's categories 
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)  
 
     @field_serializer("amount")
     def serialize_amount(self, value: Decimal) -> str:
@@ -573,11 +577,12 @@ async def upload_bank_statement(
     try:
         ai_data = response.json()
         text_resp = ai_data["candidates"][0]["content"]["parts"][0]["text"]
-        if "```json" in text_resp:
-            text_resp = text_resp.split("```json")[1].split("```").strip()
-        elif "```" in text_resp:
-            text_resp = text_resp.split("```")[1].strip()
-        
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text_resp)
+        if match:
+            text_resp = match.group(1).strip()
+        else:
+            text_resp = text_resp.strip()
+
         extracted_list = json.loads(text_resp)
         
         if not isinstance(extracted_list, list):
