@@ -645,9 +645,24 @@ export default function TransactionsPage() {
                   </div>
                 ) : (
                   <div className="txn-list">
-                    {groups.map((group, gi) => (
+                    {groups.map((group, gi) => {
+                      const grpIncome = group.label ? group.items.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(Number(t.amount)), 0) : 0;
+                      const grpExpense = group.label ? group.items.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(Number(t.amount)), 0) : 0;
+                      const grpNet = grpIncome - grpExpense;
+                      return (
                       <div key={gi}>
-                        {group.label && <div className="txn-date-header">{group.label}</div>}
+                        {group.label && (
+                          <div className="txn-date-header">
+                            <span>{group.label}</span>
+                            <div className="txn-group-summary">
+                              {grpIncome > 0 && <span className="calendar-summary-amount income">+${grpIncome.toFixed(2)}</span>}
+                              {grpExpense > 0 && <span className="calendar-summary-amount expense">-${grpExpense.toFixed(2)}</span>}
+                              <span className={`calendar-summary-net ${grpNet >= 0 ? 'income' : 'expense'}`}>
+                                {grpNet >= 0 ? '+' : '-'}${Math.abs(grpNet).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                         {group.items.map((t) => {
                           const isEditing = editingId === t.id;
                           const displayType = isEditing ? editType : t.type;
@@ -709,7 +724,25 @@ export default function TransactionsPage() {
                           );
                         })}
                       </div>
-                    ))}
+                      );
+                    })}
+                    {aggregation !== 'default' && groups.length > 1 && (() => {
+                      const allIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+                      const allExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+                      const allNet = allIncome - allExpense;
+                      return (
+                        <div className="txn-list-total">
+                          <span className="txn-list-total-label">Total</span>
+                          <div className="txn-group-summary">
+                            {allIncome > 0 && <span className="calendar-summary-amount income">+${allIncome.toFixed(2)}</span>}
+                            {allExpense > 0 && <span className="calendar-summary-amount expense">-${allExpense.toFixed(2)}</span>}
+                            <span className={`calendar-summary-net ${allNet >= 0 ? 'income' : 'expense'}`}>
+                              {allNet >= 0 ? '+' : '-'}${Math.abs(allNet).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -943,7 +976,7 @@ export default function TransactionsPage() {
                 </button>
                 <button
                   className={`txn-toggle-btn${viewMode === 'calendar' ? ' active' : ''}`}
-                  onClick={() => setViewMode('calendar')}
+                  onClick={() => { setViewMode('calendar'); if (aggregation === 'default') setAggregation('daily'); }}
                 >
                   Calendar
                 </button>
