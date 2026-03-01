@@ -82,7 +82,6 @@ class TransactionResponse(BaseModel):
     occurred_on: date
     merchant: str | None
     note: str | None
-    recurring_rule_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -667,7 +666,7 @@ async def list_transactions(
 
         await cursor.execute(
             f"""
-            SELECT t.id, t.user_id, t.category_id, t.type, t.amount, t.occurred_on, t.merchant, t.note, t.recurring_rule_id, t.created_at, t.updated_at
+            SELECT t.id, t.user_id, t.category_id, t.type, t.amount, t.occurred_on, t.merchant, t.note, t.created_at, t.updated_at
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
             WHERE {where_clause}
