@@ -1057,8 +1057,13 @@ body {
     }
 
     .budget-summary-cards {
-        flex-direction: column;
-        align-items: center;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .budget-summary-cards .budget-summary-card {
+        flex: 1 1 140px;
+        max-width: 200px;
     }
 
     .budget-header-bar {
