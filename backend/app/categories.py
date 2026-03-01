@@ -7,7 +7,7 @@ from app.database import get_db_connection
 from app.auth import get_current_user_id
 from app.utils import slugify
 
-router = APIRouter(prefix="/api/categories", tags=["categories"])
+router = APIRouter(prefix="/categories", tags=["categories"])
 
 Kind = Literal["income", "expense"]
 

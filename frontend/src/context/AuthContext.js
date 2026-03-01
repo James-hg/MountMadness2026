@@ -73,7 +73,7 @@ export function AuthProvider({ children }) {
     if (!MOCK_MODE) {
       const token = localStorage.getItem('access_token');
       if (token) {
-        fetch('/auth/logout', {
+        fetch('/api/auth/logout', {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
         }).catch(() => {});
