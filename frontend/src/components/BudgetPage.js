@@ -201,6 +201,41 @@ export default function BudgetPage() {
     allocModeRef.current = mode;
   };
 
+  const handleRebalance = async () => {
+    if (!totalBudget) return;
+    setSaving(true);
+    setError('');
+    try {
+      const data = await apiPost('/budget/total', {
+        month_start: monthStart,
+        total_budget_amount: totalBudget.toFixed(2),
+        use_active_categories: true,
+        force_reset: true,
+      });
+      setBudget(data);
+      if (data.total_budget_amount) setTotalInput(data.total_budget_amount);
+      const dollarLimits = {};
+      for (const cat of data.category_budgets || []) {
+        dollarLimits[cat.category_id] = cat.limit_amount;
+      }
+      originalLimits.current = { ...dollarLimits };
+      if (allocModeRef.current === 'percent' && data.total_budget_amount) {
+        const total = Number(data.total_budget_amount);
+        const displayLimits = {};
+        for (const [catId, val] of Object.entries(dollarLimits)) {
+          displayLimits[catId] = ((Number(val) / total) * 100).toFixed(1);
+        }
+        setLimits(displayLimits);
+      } else {
+        setLimits(dollarLimits);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Computed values
   const categories = budget?.category_budgets || [];
   const totalBudget = budget?.total_budget_amount ? Number(budget.total_budget_amount) : 0;
@@ -272,9 +307,14 @@ export default function BudgetPage() {
             </div>
             <div className="summary-card">
               <span className="summary-label">Unallocated</span>
-              <span className="summary-value" style={{ color: unallocated > 0 ? '#888' : '#2ecc71' }}>
-                ${unallocated.toFixed(2)}
+              <span className="summary-value" style={{ color: unallocated < 0 ? '#e74c3c' : unallocated > 0 ? '#888' : '#2ecc71' }}>
+                {unallocated < 0 ? '-' : ''}${Math.abs(unallocated).toFixed(2)}
               </span>
+              {unallocated < 0 && (
+                <button className="rebalance-btn" onClick={handleRebalance} disabled={saving}>
+                  {saving ? 'Rebalancing...' : 'Rebalance'}
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -303,10 +343,6 @@ export default function BudgetPage() {
                 const pct = limit > 0 ? Math.round((spent / limit) * 100) : (spent > 0 ? 100 : 0);
                 const barWidth = Math.min(pct, 100);
                 const isSaving = savingCatId === cat.category_id;
-                const otherTotal = Object.entries(originalLimits.current)
-                  .filter(([id]) => id !== String(cat.category_id))
-                  .reduce((sum, [, val]) => sum + Number(val), 0);
-                const availableDollar = Math.max(0, totalBudget - otherTotal);
 
                 let fillClass = '';
                 if (pct >= 100) fillClass = ' danger';
@@ -346,8 +382,8 @@ export default function BudgetPage() {
                       {isSaving && <span className="budget-saving-indicator">saving...</span>}
                       <span className="budget-available-label">
                         {allocMode === 'percent' && totalBudget > 0
-                          ? `${((availableDollar / totalBudget) * 100).toFixed(1)}% avail`
-                          : `$${availableDollar.toFixed(2)} avail`}
+                          ? `${((Math.max(0, unallocated) / totalBudget) * 100).toFixed(1)}% available fund`
+                          : `$${Math.max(0, unallocated).toFixed(2)} available fund`}
                       </span>
                     </div>
                     <div className="progress-bar">
