@@ -26,6 +26,7 @@
      - `backend/db/005_budget_limits_schema.sql`
      - `backend/db/006_smart_budget_allocation.sql`
      - `backend/db/007_reports_indexes.sql`
+     - `backend/db/009_ai_conversation_memory.sql`
 
 ## URLs
 - Frontend: http://localhost:5173
@@ -69,5 +70,8 @@ To access the app from your phone (same Wi-Fi network):
   - `GET /reports/top-categories?month=YYYY-MM&limit=5`
   - `GET /reports/trends?months=6`
   - `GET /reports/monthly-breakdown?month=YYYY-MM`
+- AI Assistant API endpoint:
+  - `POST /ai/chat` (body: `message`, optional `conversation_id`)
 - Reports amount outputs are decimal amount strings (`NUMERIC(12,2)` style).
 - Reports design docs: `backend/docs/reports-api-design.md`
+- AI assistant docs: `backend/docs/ai-assistant-agent.md`

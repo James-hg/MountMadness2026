@@ -1,33 +1,57 @@
 import { apiPost } from '../api';
 
-function formatHistory(history) {
-  return history
-    .slice(-8)
-    .map((item) => `${item.role === 'assistant' ? 'Assistant' : 'User'}: ${item.content}`)
-    .join('\n');
+const STORAGE_CONVERSATION_ID = 'mm_chat_widget_conversation_id';
+
+function readConversationId() {
+  try {
+    const raw = localStorage.getItem(STORAGE_CONVERSATION_ID);
+    return raw && raw.trim() ? raw.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
-export async function sendChatMessage({ message, history = [] }) {
+function writeConversationId(conversationId) {
+  try {
+    if (conversationId) {
+      localStorage.setItem(STORAGE_CONVERSATION_ID, conversationId);
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+export async function sendChatMessage({ message, conversationId = null }) {
   const trimmed = String(message || '').trim();
   if (!trimmed) {
     throw new Error('Message is empty.');
   }
 
-  const historyText = formatHistory(history);
-  const prompt = [
-    'You are an AI financial assistant for a personal finance tracker.',
-    'Keep responses concise, practical, and easy to understand.',
-    historyText ? `Conversation so far:\n${historyText}` : '',
-    `User question: ${trimmed}`,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+  const payload = {
+    message: trimmed,
+    conversation_id: conversationId || readConversationId(),
+  };
 
-  const data = await apiPost('/api/generate', { prompt });
-  const text = String(data?.text || '').trim();
-  if (!text) {
+  const data = await apiPost('/ai/chat', payload);
+  const reply = String(data?.reply || '').trim();
+
+  if (!reply) {
     throw new Error('Empty assistant response.');
   }
-  return text;
+
+  const nextConversationId = String(data?.conversation_id || '').trim();
+  if (nextConversationId) {
+    writeConversationId(nextConversationId);
+  }
+
+  return {
+    reply,
+    conversationId: nextConversationId || payload.conversation_id || null,
+    actions: Array.isArray(data?.actions) ? data.actions : [],
+    needsConfirmation: Boolean(data?.needs_confirmation),
+  };
 }
 
+export function getStoredConversationId() {
+  return readConversationId();
+}

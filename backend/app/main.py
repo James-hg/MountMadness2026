@@ -4,6 +4,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from .ai.router import router as ai_router
 from .auth import router as auth_router
 from .budget import router as budget_router
 from .categories import router as categories_router
