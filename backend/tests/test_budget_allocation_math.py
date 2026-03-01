@@ -23,7 +23,7 @@ def test_allocation_sum_matches_total_exactly() -> None:
     assert sum(result.values(), Decimal("0.00")) == total
 
 
-def test_floors_and_caps_apply_for_known_categories() -> None:
+def test_fixed_defaults_receive_all_budget_and_others_zero() -> None:
     categories = [
         _cat("00000000-0000-0000-0000-000000000011", "housing_rent"),
         _cat("00000000-0000-0000-0000-000000000012", "food"),
@@ -35,23 +35,39 @@ def test_floors_and_caps_apply_for_known_categories() -> None:
         _cat("00000000-0000-0000-0000-000000000018", "health"),
     ]
 
-    total = Decimal("1000.00")
+    total = Decimal("2500.00")
     result = allocate_default_weights_v1(total, categories)
 
     by_slug = {c.slug: result[c.category_id] for c in categories}
 
-    assert by_slug["food"] >= Decimal("100.00")
-    assert by_slug["transport"] >= Decimal("50.00")
-    assert by_slug["bills_utilities"] >= Decimal("50.00")
+    # Vancouver fixed defaults receive the full total proportionally.
+    assert by_slug["housing_rent"] > by_slug["transport"] > by_slug["bills_utilities"]
 
-    assert by_slug["housing_rent"] <= Decimal("600.00")
-    assert by_slug["food"] <= Decimal("300.00")
-    assert by_slug["entertainment"] <= Decimal("120.00")
-    assert by_slug["shopping"] <= Decimal("120.00")
-    assert by_slug["other"] <= Decimal("100.00")
+    assert by_slug["food"] == Decimal("0.00")
+    assert by_slug["entertainment"] == Decimal("0.00")
+    assert by_slug["shopping"] == Decimal("0.00")
+    assert by_slug["other"] == Decimal("0.00")
+    assert by_slug["health"] == Decimal("0.00")
+    assert sum(result.values(), Decimal("0.00")) == total
 
 
-def test_unknown_category_gets_small_weight_and_is_included() -> None:
+def test_fixed_defaults_scale_when_total_is_small() -> None:
+    categories = [
+        _cat("00000000-0000-0000-0000-000000000061", "housing_rent"),
+        _cat("00000000-0000-0000-0000-000000000062", "transport"),
+        _cat("00000000-0000-0000-0000-000000000063", "bills_utilities"),
+        _cat("00000000-0000-0000-0000-000000000064", "food"),
+    ]
+    total = Decimal("600.00")
+    result = allocate_default_weights_v1(total, categories)
+
+    by_slug = {c.slug: result[c.category_id] for c in categories}
+    assert by_slug["food"] == Decimal("0.00")
+    assert by_slug["housing_rent"] > by_slug["transport"] > by_slug["bills_utilities"]
+    assert sum(result.values(), Decimal("0.00")) == total
+
+
+def test_non_fixed_categories_remain_zero_when_fixed_category_exists() -> None:
     categories = [
         _cat("00000000-0000-0000-0000-000000000021", "food"),
         _cat("00000000-0000-0000-0000-000000000022", "gaming"),
@@ -61,7 +77,9 @@ def test_unknown_category_gets_small_weight_and_is_included() -> None:
     total = Decimal("300.00")
     result = allocate_default_weights_v1(total, categories)
 
-    assert result[UUID("00000000-0000-0000-0000-000000000022")] > Decimal("0.00")
+    assert result[UUID("00000000-0000-0000-0000-000000000022")] == Decimal("0.00")
+    assert result[UUID("00000000-0000-0000-0000-000000000021")] == Decimal("0.00")
+    assert result[UUID("00000000-0000-0000-0000-000000000023")] == total
     assert sum(result.values(), Decimal("0.00")) == total
 
 
@@ -85,8 +103,8 @@ def test_very_small_budget_includes_fewer_categories() -> None:
     result = allocate_default_weights_v1(total, categories)
 
     non_zero = [value for value in result.values() if value > Decimal("0.00")]
-    assert len(non_zero) == 2
-    assert all(value == Decimal("0.01") for value in non_zero)
+    assert len(non_zero) == 1
+    assert non_zero[0] == Decimal("0.02")
     assert sum(result.values(), Decimal("0.00")) == total
 
 

@@ -7,6 +7,7 @@ from uuid import UUID
 
 CENT = Decimal("0.01")
 
+# Strategy constants for default_weights_v1.
 KNOWN_WEIGHTS: dict[str, Decimal] = {
     "housing_rent": Decimal("0.45"),
     "food": Decimal("0.20"),
@@ -19,6 +20,13 @@ KNOWN_WEIGHTS: dict[str, Decimal] = {
 }
 
 DEFAULT_UNKNOWN_WEIGHT = Decimal("0.02")
+
+# Vancouver student defaults (fixed baselines) used in auto-allocation.
+FIXED_BASELINE_AMOUNTS: dict[str, Decimal] = {
+    "housing_rent": Decimal("900.00"),
+    "transport": Decimal("140.00"),
+    "bills_utilities": Decimal("120.00"),
+}
 
 FLOOR_RATIOS: dict[str, Decimal] = {
     "food": Decimal("0.10"),
@@ -49,6 +57,7 @@ class ExistingBudget:
 
 
 def quantize_money(value: Decimal) -> Decimal:
+    # Centralized 2-decimal quantization so all budget math aligns with NUMERIC(12,2).
     return value.quantize(CENT)
 
 
@@ -69,6 +78,7 @@ def _rebalance_remainder(
     raw_allocations: dict[UUID, Decimal],
     categories_by_id: dict[UUID, AllocationCategory],
 ) -> dict[UUID, Decimal]:
+    # Round down first, then distribute +/- 0.01 deterministically to hit exact total.
     rounded_down: dict[UUID, Decimal] = {
         category_id: amount.quantize(CENT, rounding=ROUND_DOWN)
         for category_id, amount in raw_allocations.items()
@@ -113,6 +123,11 @@ def allocate_default_weights_v1(
     total_budget_amount: Decimal,
     categories: list[AllocationCategory],
 ) -> dict[UUID, Decimal]:
+    # Main strategy entrypoint used for regenerated (non-user-modified) rows.
+    # Behavior:
+    # 1) reserve fixed baselines for housing/transport/bills when present
+    # 2) allocate remaining budget across fixed categories only (others stay 0.00)
+    # 3) preserve exact sum equality with deterministic remainder balancing
     total = quantize_money(total_budget_amount)
 
     if total < Decimal("0.00"):
@@ -124,14 +139,45 @@ def allocate_default_weights_v1(
     categories_by_id = {category.category_id: category for category in categories}
 
     if len(categories) == 1:
+        # Product rule: single category gets full budget.
         only = categories[0]
         return {only.category_id: total}
 
     if total == Decimal("0.00"):
         return {category.category_id: Decimal("0.00") for category in categories}
 
+    fixed_by_id: dict[UUID, Decimal] = {
+        category.category_id: FIXED_BASELINE_AMOUNTS[category.slug]
+        for category in categories
+        if category.slug in FIXED_BASELINE_AMOUNTS
+    }
+    fixed_total = sum(fixed_by_id.values(), Decimal("0.00"))
+
+    allocations: dict[UUID, Decimal] = {
+        category.category_id: fixed_by_id.get(category.category_id, Decimal("0.00"))
+        for category in categories
+    }
+
+    if fixed_by_id:
+        # Product rule: only fixed default categories receive budget.
+        # All non-fixed categories remain 0.00.
+        raw_fixed: dict[UUID, Decimal] = {}
+        if fixed_total > Decimal("0.00"):
+            for category_id, amount in fixed_by_id.items():
+                raw_fixed[category_id] = total * (amount / fixed_total)
+        else:
+            # Defensive fallback: split equally if baseline constants are ever changed to zero.
+            equal = total / Decimal(len(fixed_by_id))
+            for category_id in fixed_by_id:
+                raw_fixed[category_id] = equal
+
+        for category in categories:
+            allocations[category.category_id] = raw_fixed.get(category.category_id, Decimal("0.00"))
+        return _rebalance_remainder(total, allocations, categories_by_id)
+
     min_per_category = CENT
     if total < min_per_category * Decimal(len(categories)):
+        # Tiny budget mode fallback: allocate 0.01 to top-weighted categories.
         slots = int((total / min_per_category).to_integral_value(rounding=ROUND_DOWN))
         ranked = _rank_for_distribution(categories)
         allocated_ids = {c.category_id for c in ranked[:slots]}
@@ -140,49 +186,80 @@ def allocate_default_weights_v1(
             for category in categories
         }
 
+    if fixed_total >= total and fixed_total > Decimal("0.00"):
+        # If fixed baselines exceed available total, scale only fixed categories.
+        scale = total / fixed_total
+        raw_scaled = {
+            category_id: amount * scale
+            for category_id, amount in fixed_by_id.items()
+        }
+        for category in categories:
+            allocations[category.category_id] = raw_scaled.get(category.category_id, Decimal("0.00"))
+        return _rebalance_remainder(total, allocations, categories_by_id)
+
+    remaining = total - fixed_total
+
+    non_fixed_categories = [
+        category
+        for category in categories
+        if category.category_id not in fixed_by_id
+    ]
+
+    if not non_fixed_categories:
+        # Scope contains only fixed categories: distribute all by fixed proportions.
+        raw_fixed = dict(fixed_by_id)
+        if fixed_total > Decimal("0.00") and remaining > Decimal("0.00"):
+            for category_id, amount in fixed_by_id.items():
+                raw_fixed[category_id] = amount + (remaining * (amount / fixed_total))
+        for category in categories:
+            allocations[category.category_id] = raw_fixed.get(category.category_id, Decimal("0.00"))
+        return _rebalance_remainder(total, allocations, categories_by_id)
+
     weights: dict[UUID, Decimal] = {
         category.category_id: _weight_for_slug(category.slug)
-        for category in categories
+        for category in non_fixed_categories
     }
 
     floors: dict[UUID, Decimal] = {
         category.category_id: total * FLOOR_RATIOS.get(category.slug, Decimal("0.00"))
-        for category in categories
+        for category in non_fixed_categories
     }
-
     floor_total = sum(floors.values(), Decimal("0.00"))
 
-    allocations: dict[UUID, Decimal] = {category.category_id: Decimal("0.00") for category in categories}
-
-    if floor_total > total and floor_total > Decimal("0.00"):
-        scale = total / floor_total
+    if floor_total > remaining and floor_total > Decimal("0.00"):
+        # If floors exceed remaining budget after fixed baselines, scale floors.
+        scale = remaining / floor_total
         for category_id, floor_amount in floors.items():
             allocations[category_id] = floor_amount * scale
     else:
-        remaining = total - floor_total
+        rem_after_floors = remaining - floor_total
         weight_sum = sum(weights.values(), Decimal("0.00"))
-
-        for category_id in allocations:
+        for category in non_fixed_categories:
+            category_id = category.category_id
             floor_amount = floors[category_id]
             share = Decimal("0.00")
             if weight_sum > Decimal("0.00"):
-                share = remaining * (weights[category_id] / weight_sum)
+                share = rem_after_floors * (weights[category_id] / weight_sum)
             allocations[category_id] = floor_amount + share
 
+    # Caps apply only to non-fixed categories. Fixed baselines are intentionally stable defaults.
     caps: dict[UUID, Decimal | None] = {
         category.category_id: (
             total * CAP_RATIOS[category.slug]
             if category.slug in CAP_RATIOS
             else None
         )
-        for category in categories
+        for category in non_fixed_categories
     }
 
     for _ in range(10):
+        # Iterative clamp + redistribute loop for capped categories.
         overflow = Decimal("0.00")
         clamped_ids: set[UUID] = set()
 
-        for category_id, amount in allocations.items():
+        for category in non_fixed_categories:
+            category_id = category.category_id
+            amount = allocations[category_id]
             cap = caps[category_id]
             if cap is not None and amount > cap:
                 overflow += amount - cap
@@ -194,14 +271,14 @@ def allocate_default_weights_v1(
 
         recipients = [
             category_id
-            for category_id in allocations
+            for category_id in [c.category_id for c in non_fixed_categories]
             if category_id not in clamped_ids
             and (caps[category_id] is None or allocations[category_id] < caps[category_id])
         ]
 
         if not recipients:
             # Soft fallback when hard caps cannot satisfy total with selected scope.
-            recipients = list(allocations.keys())
+            recipients = [c.category_id for c in non_fixed_categories]
 
         recipient_weight_sum = sum(weights[category_id] for category_id in recipients)
         if recipient_weight_sum <= Decimal("0.00"):
@@ -221,6 +298,7 @@ def compute_regenerated_allocations(
     in_scope_categories: list[AllocationCategory],
     existing_budgets: list[ExistingBudget],
 ) -> dict[UUID, Decimal]:
+    # Preserve user overrides and only regenerate mutable rows.
     existing_by_id = {row.category_id: row for row in existing_budgets}
 
     locked_total = sum(
@@ -240,6 +318,7 @@ def compute_regenerated_allocations(
     remaining_total = quantize_money(total_budget_amount - locked_total)
 
     if remaining_total <= Decimal("0.00"):
+        # Locked rows consumed total budget; mutable rows are clamped to zero.
         return {category.category_id: Decimal("0.00") for category in regenerable_categories}
 
     return allocate_default_weights_v1(remaining_total, regenerable_categories)

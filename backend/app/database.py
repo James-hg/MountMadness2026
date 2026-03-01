@@ -7,12 +7,14 @@ from psycopg_pool import AsyncConnectionPool
 
 from .config import settings
 
+# Shared async pool used by FastAPI dependencies.
 pool: AsyncConnectionPool | None = None
 
 
 async def init_db_pool() -> None:
     global pool
 
+    # Keep app booting in non-DB contexts; endpoints will fail explicitly if used.
     if not settings.database_url:
         return
 
@@ -37,6 +39,7 @@ async def close_db_pool() -> None:
 
 
 async def get_db_connection() -> AsyncIterator[AsyncConnection]:
+    # Centralized guard to avoid obscure None-type errors in route handlers.
     if pool is None:
         raise HTTPException(status_code=500, detail="DATABASE_URL is not configured")
 

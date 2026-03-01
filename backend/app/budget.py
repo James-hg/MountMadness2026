@@ -16,6 +16,7 @@ from .services.budget_allocation import (
 )
 from .services.budget_dates import month_window, validate_month_start
 
+# Budget endpoints implement monthly total -> per-category allocation flow.
 router = APIRouter(tags=["budget"])
 
 ALLOCATION_STRATEGY = "default_weights_v1"
@@ -81,6 +82,7 @@ def _money(value: Decimal) -> str:
 
 
 async def _get_user_currency(connection: AsyncConnection, user_id: UUID) -> str:
+    # Currency is copied onto budget rows for historical consistency.
     async with connection.cursor() as cursor:
         await cursor.execute("SELECT base_currency FROM users WHERE id = %s", (user_id,))
         row = await cursor.fetchone()
@@ -92,6 +94,7 @@ async def _get_user_currency(connection: AsyncConnection, user_id: UUID) -> str:
 
 
 async def _get_visible_expense_categories(connection: AsyncConnection, user_id: UUID) -> list[dict]:
+    # Visible means global system categories + this user's custom categories.
     async with connection.cursor() as cursor:
         await cursor.execute(
             """
@@ -111,6 +114,7 @@ async def _validate_expense_categories_for_user(
     user_id: UUID,
     category_ids: list[UUID],
 ) -> list[dict]:
+    # Preserve request order while removing duplicates.
     deduped_ids = list(dict.fromkeys(category_ids))
     if not deduped_ids:
         raise HTTPException(status_code=422, detail="categories_in_scope must not be empty")
@@ -150,10 +154,12 @@ async def _resolve_scope(
     user_id: UUID,
     request: BudgetTotalRequest,
 ) -> list[dict]:
+    # Scope precedence: explicit ids -> recent active categories -> full visible defaults.
     if request.categories_in_scope is not None:
         return await _validate_expense_categories_for_user(connection, user_id, request.categories_in_scope)
 
     if request.use_active_categories:
+        # "Active" = expense categories used in last 60 days.
         cutoff = date.today() - timedelta(days=60)
         async with connection.cursor() as cursor:
             await cursor.execute(
@@ -231,6 +237,7 @@ async def _upsert_generated_budgets(
                 limit_amount = EXCLUDED.limit_amount,
                 currency = EXCLUDED.currency,
                 is_user_modified = FALSE
+            -- Never overwrite rows manually edited by user.
             WHERE budgets.is_user_modified = FALSE
             """,
             rows,
@@ -287,6 +294,7 @@ async def _fetch_month_budget_rows(
         await cursor.execute(
             """
             WITH month_spend AS (
+                -- Spending snapshot for the target month and user.
                 SELECT t.category_id, COALESCE(SUM(t.amount), 0) AS spent_amount
                 FROM transactions t
                 WHERE t.user_id = %s
@@ -381,6 +389,7 @@ async def post_budget_total(
     month_start = validate_month_start(payload.month_start)
 
     async with connection.transaction():
+        # Keep total row + regenerated category rows atomic.
         currency = await _get_user_currency(connection, user_id)
         scope_rows = await _resolve_scope(connection, user_id, payload)
 
@@ -471,7 +480,9 @@ async def put_budget_category(
     """
     month_start = validate_month_start(payload.month_start)
 
+    # Validation call enforces visibility and expense-only constraints.
     scope_rows = await _validate_expense_categories_for_user(connection, user_id, [payload.category_id])
+    _ = scope_rows  # Explicitly acknowledge validation-only usage.
     currency = await _get_user_currency(connection, user_id)
 
     async with connection.transaction():
@@ -484,6 +495,7 @@ async def put_budget_category(
                 DO UPDATE SET
                     limit_amount = EXCLUDED.limit_amount,
                     currency = EXCLUDED.currency,
+                    -- Manual edit should pin this row from auto-regeneration.
                     is_user_modified = TRUE
                 """,
                 (user_id, payload.category_id, month_start, quantize_money(payload.limit_amount), currency),
