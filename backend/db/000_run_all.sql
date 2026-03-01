@@ -3,3 +3,4 @@
 \ir 002_categories_schema.sql
 \ir 003_transactions_schema.sql
 \ir 004_seed_dev_admin.sql
+\ir 005_budget_limits_schema.sql

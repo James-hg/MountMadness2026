@@ -1,10 +1,20 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+
+const NAV_ITEMS = [
+  { label: 'Dashboard', path: '/' },
+  { label: 'Transactions', path: '/transactions' },
+  { label: 'Budget', path: '/budget' },
+  { label: 'Reports', path: '/reports' },
+  { label: 'Categories', path: '/categories' },
+  { label: 'Settings', path: '/settings' },
+];
 
 export default function NavBar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const handleLogout = () => {
@@ -18,11 +28,15 @@ export default function NavBar() {
     <nav className="top-nav">
       <div className="nav-logo"></div>
       <div className="nav-links">
-        <button className="nav-btn active">Dashboard</button>
-        <button className="nav-btn">Transactions</button>
-        <button className="nav-btn">Budget</button>
-        <button className="nav-btn">Reports</button>
-        <button className="nav-btn">Settings</button>
+        {NAV_ITEMS.map((item) => (
+          <Link
+            key={item.path}
+            to={item.path}
+            className={`nav-btn ${location.pathname === item.path ? 'active' : ''}`}
+          >
+            {item.label}
+          </Link>
+        ))}
       </div>
       <div className="nav-profile">
         <button className="profile-btn" onClick={() => setDropdownOpen(!dropdownOpen)}>
