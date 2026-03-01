@@ -18,9 +18,9 @@
 
 ### Transactions
 
-- [ ] add category to each transaction (decide whether showing text or icon)
-- [ ] sort algorithm by category
-- [ ] limitation in the price range
+- [x] add category to each transaction (decide whether showing text or icon)
+- [x] sort algorithm by category
+- [x] limitation in the price range
 
 ### Budget
 
@@ -41,11 +41,11 @@
 
 ### Extra
 
-- [ ] include LOGO (mountainfinance)
+- [x] include LOGO (mountainfinance)
 
 ## James
 
-- [ ] Dashboard
+- [x] Dashboard
 
 ## Jeehoon
 
@@ -59,8 +59,8 @@
 
 ## Haki
 
-- [ ] /import endpoint
-- [ ] receipt photo extract
-- [ ] pdf extract
-- [ ] UI
-- [ ] import page design
+- [x] /import endpoint
+- [x] receipt photo extract
+- [x] pdf extract
+- [x] UI
+- [x] import page design

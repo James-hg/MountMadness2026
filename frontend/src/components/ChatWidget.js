@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getChatStorageScope, getStoredConversationId, sendChatMessage } from '../services/chatClient';
+import { clearChatStorageForUser, getChatStorageScope, getStoredConversationId, sendChatMessage } from '../services/chatClient';
 
 const STORAGE_PREFIX = 'mm_chat_widget';
 
@@ -249,6 +249,20 @@ export default function ChatWidget() {
     }
   };
 
+  const handleMinimize = () => {
+    setIsOpen(false);
+  };
+
+  const handleCloseAndClear = () => {
+    clearChatStorageForUser(user);
+    setMessages([]);
+    setUnread(false);
+    setConversationId(null);
+    setInput('');
+    setIsTyping(false);
+    setIsOpen(false);
+  };
+
   const onInputKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -287,7 +301,7 @@ export default function ChatWidget() {
               <button
                 type="button"
                 className="chat-widget-icon-btn"
-                onClick={() => setIsOpen(false)}
+                onClick={handleMinimize}
                 aria-label="Minimize chat"
               >
                 &#8211;
@@ -295,7 +309,7 @@ export default function ChatWidget() {
               <button
                 type="button"
                 className="chat-widget-icon-btn"
-                onClick={() => setIsOpen(false)}
+                onClick={handleCloseAndClear}
                 aria-label="Close chat"
               >
                 &#10005;

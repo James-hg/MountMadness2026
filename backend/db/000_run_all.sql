@@ -7,3 +7,4 @@
 \ir 007_reports_indexes.sql
 \ir 008_fixed_and_recurring_schema.sql
 \ir 009_ai_conversation_memory.sql
+\ir 010_goals_schema.sql

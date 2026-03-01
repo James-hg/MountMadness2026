@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { label: 'Transactions', path: '/transactions' },
   { label: 'Import', path: '/import' },
   { label: 'Budget', path: '/budget' },
+  { label: 'Goals', path: '/goals' },
   { label: 'Reports', path: '/reports' },
   { label: 'Categories', path: '/categories' },
   { label: 'Settings', path: '/settings' },
