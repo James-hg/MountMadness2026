@@ -1,5 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
@@ -10,10 +10,16 @@ import BudgetPage from './components/BudgetPage';
 import SettingsPage from './components/SettingsPage';
 import CategoriesPage from './components/CategoriesPage';
 import CalendarPage from './components/CalendarPage';
+import ChatWidget from './components/ChatWidget';
 
-function App() {
+function AppShell() {
+  const location = useLocation();
+  const { isAuthenticated } = useAuth();
+  const isAuthRoute = location.pathname.startsWith('/auth/');
+  const shouldShowWidget = isAuthenticated && !isAuthRoute;
+
   return (
-    <AuthProvider>
+    <>
       <Routes>
         <Route path="/auth/login" element={<LoginPage />} />
         <Route path="/auth/signup" element={<SignupPage />} />
@@ -75,6 +81,15 @@ function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {shouldShowWidget && <ChatWidget />}
+    </>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
     </AuthProvider>
   );
 }
