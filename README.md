@@ -23,6 +23,8 @@
      - `backend/db/002_categories_schema.sql`
      - `backend/db/003_transactions_schema.sql`
      - `backend/db/004_seed_dev_admin.sql`
+     - `backend/db/005_budget_limits_schema.sql`
+     - `backend/db/006_smart_budget_allocation.sql`
 
 ## URLs
 - Frontend: http://localhost:5173
@@ -43,3 +45,7 @@
   - `PATCH /transactions/{id}`
   - `DELETE /transactions/{id}`
   - `GET /transactions/summary`
+- Smart Budget API endpoints:
+  - `POST /budget/total`
+  - `GET /budget?month_start=YYYY-MM-01`
+  - `PUT /budget/category`
