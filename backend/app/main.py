@@ -33,6 +33,7 @@ app.include_router(reports_router)
 app.include_router(dashboard_router)
 app.include_router(fixed_categories_router)
 app.include_router(recurring_router)
+app.include_router(ai_router)
 
 
 class PromptRequest(BaseModel):
