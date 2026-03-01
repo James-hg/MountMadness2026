@@ -57,6 +57,7 @@ body {
     color: #888;
     cursor: pointer;
     transition: all 0.2s;
+    text-decoration: none;
 }
 
 .nav-btn:hover {
@@ -517,4 +518,375 @@ body {
     .auth-panel {
         padding: 24px;
     }
+
+    .page-container {
+        padding: 0 4% 20px 4%;
+    }
+
+    .summary-cards {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .form-row {
+        flex-direction: column;
+    }
+
+    .filter-row {
+        flex-direction: column;
+    }
+
+    .category-row {
+        flex-wrap: wrap;
+    }
+}
+
+/* ══════════════════════════════════════════
+   Page Layout (Transactions, Reports, etc.)
+   ══════════════════════════════════════════ */
+
+.page-container {
+    padding: 0 5% 24px 5%;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #222;
+}
+
+/* ── Reusable Card ── */
+.card {
+    background: #fff;
+    border: 2px solid #222;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+}
+
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 16px;
+}
+
+.card-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.card-title-row .card-title {
+    margin-bottom: 0;
+}
+
+/* ── Buttons ── */
+.primary-btn {
+    padding: 10px 20px;
+    background: #6c5ce7;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-family: inherit;
+}
+
+.primary-btn:hover {
+    background: #5a4bd1;
+}
+
+.primary-btn:disabled {
+    background: #d4d0e8;
+    cursor: not-allowed;
+}
+
+.secondary-btn {
+    padding: 8px 16px;
+    background: #fff;
+    color: #6c5ce7;
+    border: 1.5px solid #6c5ce7;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.secondary-btn:hover {
+    background: #f0eef8;
+}
+
+.secondary-btn:disabled {
+    color: #d4d0e8;
+    border-color: #d4d0e8;
+    cursor: not-allowed;
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+
+.icon-btn:hover {
+    background: #f0f2f5;
+}
+
+.icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ── Empty State ── */
+.empty-state {
+    text-align: center;
+    padding: 32px 16px;
+}
+
+.empty-state-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+}
+
+.empty-state h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 6px;
+}
+
+.empty-state p {
+    font-size: 0.85rem;
+    color: #999;
+}
+
+/* ── Form Elements (Page Forms) ── */
+.page-form .form-group {
+    margin-bottom: 18px;
+    flex: 1;
+}
+
+.page-form .form-group label {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #222;
+    margin-bottom: 6px;
+}
+
+.page-form .form-group input,
+.form-select {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid #d0cde0;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+    background: #fff;
+    color: #333;
+}
+
+.page-form .form-group input:focus,
+.form-select:focus {
+    border-color: #a8a0d0;
+}
+
+.page-form .form-group input:disabled,
+.form-select:disabled {
+    background: #f8f7fc;
+    color: #aaa;
+    cursor: not-allowed;
+}
+
+.form-row {
+    display: flex;
+    gap: 16px;
+}
+
+/* ── Filters ── */
+.filter-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+}
+
+.filter-item {
+    flex: 1;
+}
+
+.filter-item label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+/* ── Summary Cards (Reports) ── */
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.summary-card {
+    background: #fff;
+    border: 2px solid #222;
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+}
+
+.summary-card.accent {
+    background: #f0eef8;
+    border-color: #6c5ce7;
+}
+
+.summary-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #222;
+}
+
+.summary-card.accent .summary-value {
+    color: #6c5ce7;
+}
+
+.summary-sub {
+    font-size: 0.75rem;
+    color: #aaa;
+}
+
+/* ── Budget Items ── */
+.budget-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.budget-item {
+    padding: 12px 16px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+}
+
+.budget-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.budget-category {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #222;
+}
+
+.budget-amounts {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.progress-bar {
+    height: 6px;
+    background: #e0dde8;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #6c5ce7;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.budget-percent {
+    font-size: 0.75rem;
+    color: #aaa;
+}
+
+/* ── Category Rows ── */
+.category-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.category-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    transition: background 0.15s;
+}
+
+.category-row:hover {
+    background: #f8f7fc;
+}
+
+.category-icon {
+    font-size: 1.2rem;
+    width: 32px;
+    text-align: center;
+}
+
+.category-name {
+    flex: 1;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #333;
+}
+
+.category-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #888;
+    background: #f0f2f5;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.category-actions {
+    display: flex;
+    gap: 4px;
 }
