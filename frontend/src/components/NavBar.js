@@ -16,6 +16,7 @@ export default function NavBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -27,12 +28,16 @@ export default function NavBar() {
   return (
     <nav className="top-nav">
       <div className="nav-logo"></div>
-      <div className="nav-links">
+      <button className="nav-hamburger" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
+        <span /><span /><span />
+      </button>
+      <div className={`nav-links${menuOpen ? ' nav-links--open' : ''}`}>
         {NAV_ITEMS.map((item) => (
           <Link
             key={item.path}
             to={item.path}
             className={`nav-btn ${location.pathname === item.path ? 'active' : ''}`}
+            onClick={() => setMenuOpen(false)}
           >
             {item.label}
           </Link>

@@ -29,6 +29,24 @@ body {
     gap: 8px;
 }
 
+.nav-hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+}
+.nav-hamburger span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: #444;
+    border-radius: 2px;
+}
+
 .profile-btn {
     width: 36px;
     height: 36px;
@@ -548,6 +566,72 @@ body {
 
     .category-row {
         flex-wrap: wrap;
+    }
+
+    /* NavBar mobile */
+    .top-nav {
+        flex-wrap: wrap;
+        position: relative;
+    }
+    .nav-hamburger {
+        display: flex;
+    }
+    .nav-links {
+        display: none;
+        width: 100%;
+        order: 10;
+        flex-direction: column;
+        background: #fff;
+        padding: 8px 0;
+        border-top: 1px solid #e0e0e0;
+    }
+    .nav-links--open {
+        display: flex;
+    }
+    .nav-links .nav-btn {
+        padding: 10px 12px;
+        border-bottom: none;
+        border-left: 3px solid transparent;
+    }
+    .nav-links .nav-btn.active {
+        border-left-color: #6c5ce7;
+        border-bottom: none;
+    }
+    .nav-profile {
+        margin-left: auto;
+    }
+
+    /* Page header */
+    .page-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    /* Transaction edit form */
+    .txn-edit-row {
+        flex-wrap: wrap;
+    }
+    .txn-edit-input {
+        min-width: 0;
+        flex: 1 1 120px;
+    }
+
+    /* Transaction item */
+    .txn-item-merchant {
+        max-width: 140px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Calendar summary rows */
+    .calendar-summary-row {
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    .calendar-summary-label {
+        width: 100%;
+        font-weight: 600;
     }
 }
 
@@ -1076,6 +1160,19 @@ body {
     border-width: 2px;
 }
 
+.calendar-day--positive {
+    background: #e8f8ef;
+}
+.calendar-day--negative {
+    background: #fdecea;
+}
+.calendar-day--positive.calendar-day--selected {
+    background: #ddf3e6;
+}
+.calendar-day--negative.calendar-day--selected {
+    background: #f8d7d4;
+}
+
 .calendar-day-indicators {
     display: flex;
     gap: 3px;
@@ -1104,6 +1201,140 @@ body {
     background: #f0eef8;
     padding: 1px 6px;
     border-radius: 8px;
+}
+
+.calendar-day-cashflow {
+    font-size: 0.62rem;
+    font-weight: 600;
+    line-height: 1;
+}
+.calendar-day-cashflow.positive {
+    color: #2ecc71;
+}
+.calendar-day-cashflow.negative {
+    color: #e74c3c;
+}
+
+.calendar-summary-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.calendar-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+    gap: 12px;
+}
+.calendar-summary-row:last-child {
+    border-bottom: none;
+}
+.calendar-summary-label {
+    font-size: 0.82rem;
+    color: #444;
+    flex: 1;
+    min-width: 0;
+}
+.calendar-summary-amounts {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.calendar-summary-amount {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+.calendar-summary-amount.income {
+    color: #2ecc71;
+}
+.calendar-summary-amount.expense {
+    color: #e74c3c;
+}
+.calendar-summary-net {
+    font-size: 0.82rem;
+    font-weight: 700;
+    min-width: 80px;
+    text-align: right;
+}
+.calendar-summary-net.income {
+    color: #2ecc71;
+}
+.calendar-summary-net.expense {
+    color: #e74c3c;
+}
+
+.collapsible-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+.collapsible-header .card-title {
+    margin-bottom: 0;
+}
+.collapsible-arrow {
+    font-size: 0.75rem;
+    color: #888;
+    transition: transform 0.2s ease;
+    transform: rotate(-90deg);
+}
+.collapsible-arrow.open {
+    transform: rotate(0deg);
+}
+
+.category-summary {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e8e4f8;
+}
+.category-summary .card-title {
+    margin-bottom: 0;
+}
+.category-summary-item {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+    gap: 2px;
+}
+.category-summary-name {
+    font-size: 0.78rem;
+    color: #444;
+    word-wrap: break-word;
+}
+.category-summary-amounts {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+.category-summary-amount {
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.category-summary-amount.expense {
+    color: #e74c3c;
+}
+.category-summary-amount.income {
+    color: #2ecc71;
+}
+.category-summary-total {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0 0;
+    margin-top: 4px;
+    border-top: 2px solid #e8e4f8;
+    gap: 2px;
+}
+.category-summary-total .category-summary-name {
+    font-weight: 700;
+    color: #333;
+}
+.category-summary-total .category-summary-amount {
+    text-align: right;
 }
 
 .calendar-txn-list {
@@ -1193,12 +1424,12 @@ body {
 
 @media (max-width: 768px) {
     .calendar-day {
-        min-height: 60px;
-        padding: 4px;
+        min-height: 55px;
+        padding: 3px;
     }
 
     .calendar-day-number {
-        font-size: 0.75rem;
+        font-size: 0.72rem;
     }
 
     .calendar-month-title {
@@ -1207,7 +1438,21 @@ body {
     }
 
     .calendar-weekday {
-        font-size: 0.7rem;
+        font-size: 0.65rem;
+    }
+
+    .calendar-day-cashflow {
+        font-size: 0.5rem;
+    }
+
+    .calendar-nav {
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+    }
+
+    .calendar-grid {
+        gap: 2px;
     }
 }
 
@@ -1474,6 +1719,67 @@ body {
 
 .txn-item-amount.expense {
     color: #e74c3c;
+}
+
+/* Inline edit wrapper + form */
+.txn-item-wrapper {
+    border: 2px solid #7c5cfc;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 4px 0;
+}
+
+.txn-item-wrapper .txn-item {
+    border-bottom: 1px solid #e8e4f8;
+}
+
+.txn-item-wrapper .calendar-txn-item {
+    border-bottom: 1px solid #e8e4f8;
+}
+
+.txn-item-edit {
+    padding: 12px 16px;
+    background: #f8f7fc;
+}
+
+.txn-edit-error {
+    color: #e74c3c;
+    background: #fdecea;
+    border: 1px solid #e74c3c;
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+}
+
+.txn-edit-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.txn-edit-input {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    background: #fff;
+}
+
+.txn-edit-input:focus {
+    outline: none;
+    border-color: #7c5cfc;
+}
+
+.txn-edit-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.txn-edit-btn {
+    padding: 5px 14px;
+    font-size: 0.8rem;
 }
 
 /* Sort order visualization */
