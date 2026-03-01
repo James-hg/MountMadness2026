@@ -110,14 +110,13 @@ export async function apiPost(path, body) {
 }
 
 export async function apiPatch(path, body) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await request(path, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Request failed (${res.status})`);
+    throw new Error(await parseErrorResponse(res));
   }
   return res.json();
 }

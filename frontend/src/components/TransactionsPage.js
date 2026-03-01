@@ -564,6 +564,8 @@ export default function TransactionsPage() {
                           const displayMerchant = isEditing ? (editMerchant || editNote || 'Transaction') : (t.merchant || t.note || 'Transaction');
                           const displayDate = isEditing ? editDate : t.occurred_on;
                           const displayAmount = Math.abs(isEditing ? (Number(editAmount) || 0) : Number(t.amount));
+                          const cat = categories.find(c => c.id === t.category_id);
+                          const categoryName = cat ? cat.name : null;
                           return (
                             <div key={t.id} className={isEditing ? 'txn-item-wrapper' : ''}>
                               <div className="txn-item" onClick={() => !isEditing && startEditing(t)} style={{ cursor: isEditing ? 'default' : 'pointer' }}>
@@ -572,7 +574,10 @@ export default function TransactionsPage() {
                                     {displayType === 'income' ? '+' : '-'}
                                   </span>
                                   <div className="txn-item-details">
-                                    <span className="txn-item-merchant">{displayMerchant}</span>
+                                    <div className="txn-item-merchant-row">
+                                      <span className="txn-item-merchant">{displayMerchant}</span>
+                                      {categoryName && <span className="txn-item-category">{categoryName}</span>}
+                                    </div>
                                     <span className="txn-item-date">{displayDate}</span>
                                   </div>
                                 </div>
@@ -778,6 +783,8 @@ export default function TransactionsPage() {
                           const displayType = isEditing ? editType : t.type;
                           const displayMerchant = isEditing ? (editMerchant || editNote || 'Transaction') : (t.merchant || t.note || 'Transaction');
                           const displayAmount = Math.abs(isEditing ? (Number(editAmount) || 0) : Number(t.amount));
+                          const calCat = categories.find(c => c.id === t.category_id);
+                          const calCategoryName = calCat ? calCat.name : null;
                           return (
                             <div key={t.id} className={isEditing ? 'txn-item-wrapper' : ''}>
                               <div className="calendar-txn-item" onClick={() => !isEditing && startEditing(t)} style={{ cursor: isEditing ? 'default' : 'pointer' }}>
@@ -786,6 +793,7 @@ export default function TransactionsPage() {
                                     {displayType === 'income' ? '+' : '-'}
                                   </span>
                                   <span className="calendar-txn-merchant">{displayMerchant}</span>
+                                  {calCategoryName && <span className="txn-item-category">{calCategoryName}</span>}
                                 </div>
                                 <span className={`calendar-txn-amount ${displayType}`}>
                                   {displayType === 'income' ? '+' : '-'}${displayAmount.toFixed(2)}
