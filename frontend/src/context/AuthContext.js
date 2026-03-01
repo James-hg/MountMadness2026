@@ -3,7 +3,7 @@ import { apiPost } from '../api';
 
 const AuthContext = createContext(null);
 
-const MOCK_MODE = true;
+const MOCK_MODE = false;
 
 function getMockUsers() {
   try {
