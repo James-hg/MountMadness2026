@@ -4,10 +4,18 @@
 
 ### Dashboard
 
-- [ ] remove loading data in dashboard chart
+- [x] remove loading data in dashboard chart
+- [x] charts below the dashboard - some wordings on spendings (use ai for emotion)
 - [ ] move ai chatbot to popup window (available all pages)
-- [ ] charts below the dashboard - some wordings on spendings (use ai for emotion)
 - [ ] add welcoming message at the top (maybe mainlanding page show for once)
+- [ ] implement AI chatbot functionality
+  - [ ] add transaction
+  - [ ] update transactions
+  - [ ] set budgets
+  - [ ] apply categories
+  - [ ] give insights
+  - [ ] give suggestions
+  - [ ] budget spending assistant
 
 ### Transactions
 
