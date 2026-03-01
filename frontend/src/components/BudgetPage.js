@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import NavBar from './NavBar';
-import { apiGet, apiPost, apiPut } from '../api';
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete } from '../api';
 
 function toMonthStart(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
@@ -18,6 +18,23 @@ function shiftMonth(monthStr, delta) {
   return toMonthStart(d);
 }
 
+const CATEGORY_COLORS = {
+  'food': '#f97316',
+  'housing / rent': '#6366f1',
+  'transport': '#06b6d4',
+  'bills / utilities': '#14b8a6',
+  'shopping': '#f59e0b',
+  'entertainment': '#a855f7',
+  'health': '#10b981',
+  'insurance': '#8b5cf6',
+  'tuition': '#ec4899',
+  'other': '#94a3b8',
+};
+
+function getCategoryColor(name) {
+  return CATEGORY_COLORS[name.toLowerCase()] || '#94a3b8';
+}
+
 export default function BudgetPage() {
   const [monthStart, setMonthStart] = useState(toMonthStart(new Date()));
   const [budget, setBudget] = useState(null);
@@ -33,6 +50,9 @@ export default function BudgetPage() {
   const [savingCatId, setSavingCatId] = useState(null);
   const [focusedCatId, setFocusedCatId] = useState(null);
   const originalLimits = useRef({});
+
+  // Recurring rules
+  const [recurringRules, setRecurringRules] = useState([]);
 
   // Allocation mode: 'dollar' or 'percent'
   const [allocMode, setAllocMode] = useState('dollar');
@@ -237,6 +257,42 @@ export default function BudgetPage() {
     }
   };
 
+  const fetchRecurringRules = useCallback(async () => {
+    try {
+      const rules = await apiGet('/recurring-rules?is_active=true');
+      setRecurringRules(rules);
+    } catch {
+      setRecurringRules([]);
+    }
+  }, []);
+
+  // Generate due recurring transactions, then refresh data
+  useEffect(() => {
+    const run = async () => {
+      try { await apiPost('/recurring-rules/generate', {}); } catch {}
+      fetchRecurringRules();
+    };
+    run();
+  }, [monthStart, fetchRecurringRules]);
+
+  const toggleFixed = async (categoryId, currentlyFixed) => {
+    try {
+      if (currentlyFixed) {
+        await apiDelete(`/fixed-categories/${categoryId}`);
+      } else {
+        await apiPost('/fixed-categories', { category_id: categoryId });
+      }
+      await fetchBudget();
+    } catch {}
+  };
+
+  const toggleRuleActive = async (ruleId, currentlyActive) => {
+    try {
+      await apiPatch(`/recurring-rules/${ruleId}`, { is_active: !currentlyActive });
+      await fetchRecurringRules();
+    } catch {}
+  };
+
   // Computed values
   const categories = budget?.category_budgets || [];
   const totalBudget = budget?.total_budget_amount ? Number(budget.total_budget_amount) : 0;
@@ -244,7 +300,90 @@ export default function BudgetPage() {
   const totalAllocated = categories.reduce((sum, c) => sum + Number(c.limit_amount), 0);
   const totalRemaining = totalBudget - totalSpent;
   const unallocated = totalBudget - totalAllocated;
+  const fixedCategories = categories.filter(c => c.is_fixed);
+  const flexibleCategories = categories.filter(c => !c.is_fixed);
   const hasBudget = budget?.total_budget_amount != null;
+  const spentRatio = totalBudget > 0 ? totalSpent / totalBudget : 0;
+
+  const renderBudgetItem = (cat) => {
+    const limit = Number(cat.limit_amount);
+    const spent = Number(cat.spent_amount);
+    const remaining = limit - spent;
+    const pct = limit > 0 ? Math.round((spent / limit) * 100) : (spent > 0 ? 100 : 0);
+    const barWidth = Math.min(pct, 100);
+    const isSaving = savingCatId === cat.category_id;
+    const catColor = getCategoryColor(cat.category_name);
+
+    let fillClass = '';
+    if (pct >= 100) fillClass = ' danger';
+    else if (pct >= 80) fillClass = ' warning';
+
+    return (
+      <div key={cat.category_id} className="budget-item">
+        <div className="budget-item-header">
+          <span className="budget-category">
+            <span className="budget-category-dot" style={{ backgroundColor: catColor }} />
+            {cat.category_name}
+            {cat.is_user_modified && <span className="budget-modified-badge">edited</span>}
+            <button
+              className={`fixed-toggle-btn${cat.is_fixed ? ' active' : ''}`}
+              onClick={() => toggleFixed(cat.category_id, cat.is_fixed)}
+              title={cat.is_fixed ? 'Unmark as fixed' : 'Mark as fixed expense'}
+            >
+              {cat.is_fixed ? '\u{1F4CC}' : '\u{1F4CD}'}
+            </button>
+          </span>
+          <div className="budget-amounts-group">
+            <span className="budget-amounts" style={{ color: '#e74c3c' }}>
+              -${spent.toFixed(2)}
+            </span>
+            <span className="budget-amounts" style={{ color: remaining >= 0 ? '#2ecc71' : '#e74c3c' }}>
+              {remaining >= 0 ? `$${remaining.toFixed(2)} left` : `-$${Math.abs(remaining).toFixed(2)} over`}
+            </span>
+          </div>
+        </div>
+        <div className="budget-allocator-row">
+          <label className="budget-allocator-label">{allocMode === 'percent' ? '%' : 'Limit'}</label>
+          <input
+            className="budget-limit-input"
+            type="number"
+            step={allocMode === 'percent' ? '0.1' : '0.01'}
+            min="0"
+            value={limits[cat.category_id] ?? ''}
+            onChange={(e) => handleLimitChange(cat.category_id, e.target.value)}
+            onFocus={() => setFocusedCatId(cat.category_id)}
+            onBlur={() => { setFocusedCatId(null); handleLimitSave(cat.category_id); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.target.blur(); }
+            }}
+            disabled={isSaving}
+          />
+          {isSaving && <span className="budget-saving-indicator">saving...</span>}
+          <span className="budget-available-label">
+            {focusedCatId === cat.category_id
+              ? (allocMode === 'percent' && totalBudget > 0
+                  ? `${((Math.max(0, unallocated) / totalBudget) * 100).toFixed(1)}% available fund`
+                  : `$${Math.max(0, unallocated).toFixed(2)} available fund`)
+              : (remaining >= 0
+                  ? `$${remaining.toFixed(2)} left`
+                  : `-$${Math.abs(remaining).toFixed(2)} over`)}
+          </span>
+        </div>
+        <div className="budget-progress-row">
+          <div className="progress-bar">
+            <div
+              className={`progress-fill${fillClass}`}
+              style={{
+                width: `${barWidth}%`,
+                ...(fillClass === '' ? { backgroundColor: catColor } : {}),
+              }}
+            />
+          </div>
+          <span className="budget-percent">{pct}% used</span>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -254,75 +393,131 @@ export default function BudgetPage() {
           <h1 className="page-title">Budget</h1>
         </div>
 
-        {/* Month Navigator */}
-        <div className="budget-month-nav">
-          <button className="month-nav-btn" onClick={() => setMonthStart(shiftMonth(monthStart, -1))}>&#8249;</button>
-          <span className="month-nav-label">{formatMonthLabel(monthStart)}</span>
-          <button className="month-nav-btn" onClick={() => setMonthStart(shiftMonth(monthStart, 1))}>&#8250;</button>
-        </div>
-
-        {error && <p className="form-error">{error}</p>}
-
-        {/* Set Total Budget */}
-        <div className="card">
-          <h2 className="card-title">{hasBudget ? 'Update Monthly Budget' : 'Set Monthly Budget'}</h2>
-          <form className="budget-total-form" onSubmit={handleSetTotal}>
-            <div className="form-group" style={{ flex: 1 }}>
-              <label>Total Budget ({budget?.currency || 'CAD'})</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                placeholder="e.g. 2000.00"
-                value={totalInput}
-                onChange={(e) => setTotalInput(e.target.value)}
-                disabled={saving}
-              />
-            </div>
-            <button className="primary-btn" type="submit" disabled={saving || loading}>
-              {saving ? 'Saving...' : hasBudget ? 'Update Budget' : 'Set Budget'}
+        {/* Combined Header Bar: Month Nav + Budget Input */}
+        <div className="budget-header-bar">
+          <div className="budget-month-nav">
+            <button className="month-nav-btn" onClick={() => setMonthStart(shiftMonth(monthStart, -1))}>&#8249;</button>
+            <span className="month-nav-label">{formatMonthLabel(monthStart)}</span>
+            <button className="month-nav-btn" onClick={() => setMonthStart(shiftMonth(monthStart, 1))}>&#8250;</button>
+          </div>
+          <form className="budget-total-inline" onSubmit={handleSetTotal}>
+            <label className="budget-total-currency">{budget?.currency || 'CAD'}</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              placeholder="e.g. 2000.00"
+              value={totalInput}
+              onChange={(e) => setTotalInput(e.target.value)}
+              disabled={saving}
+            />
+            <button className="primary-btn budget-set-btn" type="submit" disabled={saving || loading}>
+              {saving ? 'Saving...' : hasBudget ? 'Update' : 'Set Budget'}
             </button>
           </form>
         </div>
 
+        {error && <p className="budget-error">{error}</p>}
         {loading && <p style={{ textAlign: 'center', padding: 16, color: '#888' }}>Loading...</p>}
 
-        {/* Overview Summary */}
+        {/* Overview Summary: 3 Cards */}
         {hasBudget && (
-          <div className="summary-cards">
-            <div className="summary-card">
-              <span className="summary-label">Total Budget</span>
-              <span className="summary-value">${totalBudget.toFixed(2)}</span>
+          <>
+            <div className="budget-summary-cards">
+              <div className="budget-summary-card">
+                <span className="summary-label">Total Budget</span>
+                <span className="summary-value">${totalBudget.toFixed(2)}</span>
+              </div>
+              <div className="budget-summary-card">
+                <span className="summary-label">Total Spent</span>
+                <span className="summary-value" style={{ color: '#e74c3c' }}>
+                  ${totalSpent.toFixed(2)}
+                </span>
+              </div>
+              <div className="budget-summary-card">
+                <span className="summary-label">Remaining</span>
+                <span className="summary-value" style={{ color: totalRemaining >= 0 ? '#2ecc71' : '#e74c3c' }}>
+                  {totalRemaining < 0 ? '-' : ''}${Math.abs(totalRemaining).toFixed(2)}
+                </span>
+              </div>
             </div>
-            <div className="summary-card">
-              <span className="summary-label">Total Spent</span>
-              <span className="summary-value" style={{ color: '#e74c3c' }}>
-                ${totalSpent.toFixed(2)}
-              </span>
+
+            {/* Overall Budget Health Bar */}
+            <div className="budget-health-bar-container">
+              <div className="budget-health-bar">
+                <div
+                  className={`budget-health-fill${spentRatio >= 1 ? ' danger' : spentRatio >= 0.8 ? ' warning' : ''}`}
+                  style={{ width: `${Math.min(spentRatio * 100, 100)}%` }}
+                />
+              </div>
+              <div className="budget-health-labels">
+                <span>${totalSpent.toFixed(2)} spent</span>
+                <span>${totalBudget.toFixed(2)} budget</span>
+              </div>
             </div>
-            <div className="summary-card">
-              <span className="summary-label">Remaining</span>
-              <span className="summary-value" style={{ color: totalRemaining >= 0 ? '#2ecc71' : '#e74c3c' }}>
-                {totalRemaining < 0 ? '-' : ''}${Math.abs(totalRemaining).toFixed(2)}
-              </span>
+          </>
+        )}
+
+        {/* Over-allocated Warning Banner */}
+        {hasBudget && unallocated < 0 && (
+          <div className="budget-overallocated-banner">
+            <span>
+              Over-allocated by ${Math.abs(unallocated).toFixed(2)} &mdash; category limits exceed total budget.
+            </span>
+            <button className="rebalance-btn" onClick={handleRebalance} disabled={saving}>
+              {saving ? 'Rebalancing...' : 'Rebalance'}
+            </button>
+          </div>
+        )}
+
+        {/* Fixed Expenses */}
+        {hasBudget && fixedCategories.length > 0 && (
+          <div className="budget-categories-card">
+            <div className="budget-card-header">
+              <h2 className="card-title">Fixed Expenses</h2>
+              <span className="budget-section-subtitle">Auto-carried forward each month</span>
+              <div className="budget-mode-toggle">
+                <button
+                  className={`budget-mode-btn${allocMode === 'dollar' ? ' active' : ''}`}
+                  onClick={() => handleModeSwitch('dollar')}
+                >$</button>
+                <button
+                  className={`budget-mode-btn${allocMode === 'percent' ? ' active' : ''}`}
+                  onClick={() => handleModeSwitch('percent')}
+                >%</button>
+              </div>
             </div>
-            <div className="summary-card">
-              <span className="summary-label">Unallocated</span>
-              <span className="summary-value" style={{ color: unallocated < 0 ? '#e74c3c' : unallocated > 0 ? '#888' : '#2ecc71' }}>
-                {unallocated < 0 ? '-' : ''}${Math.abs(unallocated).toFixed(2)}
-              </span>
-              {unallocated < 0 && (
-                <button className="rebalance-btn" onClick={handleRebalance} disabled={saving}>
-                  {saving ? 'Rebalancing...' : 'Rebalance'}
-                </button>
-              )}
+            <div className="budget-list">
+              {fixedCategories.map((cat) => renderBudgetItem(cat))}
             </div>
           </div>
         )}
 
-        {/* Category Budgets */}
-        {hasBudget && categories.length > 0 && (
-          <div className="card">
+        {/* Flexible Expenses */}
+        {hasBudget && flexibleCategories.length > 0 && (
+          <div className="budget-categories-card">
+            <div className="budget-card-header">
+              <h2 className="card-title">Flexible Expenses</h2>
+              <div className="budget-mode-toggle">
+                <button
+                  className={`budget-mode-btn${allocMode === 'dollar' ? ' active' : ''}`}
+                  onClick={() => handleModeSwitch('dollar')}
+                >$</button>
+                <button
+                  className={`budget-mode-btn${allocMode === 'percent' ? ' active' : ''}`}
+                  onClick={() => handleModeSwitch('percent')}
+                >%</button>
+              </div>
+            </div>
+            <div className="budget-list">
+              {flexibleCategories.map((cat) => renderBudgetItem(cat))}
+            </div>
+          </div>
+        )}
+
+        {/* All Categories (when none are fixed) */}
+        {hasBudget && categories.length > 0 && fixedCategories.length === 0 && flexibleCategories.length === 0 && (
+          <div className="budget-categories-card">
             <div className="budget-card-header">
               <h2 className="card-title">Category Budgets</h2>
               <div className="budget-mode-toggle">
@@ -337,68 +532,37 @@ export default function BudgetPage() {
               </div>
             </div>
             <div className="budget-list">
-              {categories.map((cat) => {
-                const limit = Number(cat.limit_amount);
-                const spent = Number(cat.spent_amount);
-                const remaining = limit - spent;
-                const pct = limit > 0 ? Math.round((spent / limit) * 100) : (spent > 0 ? 100 : 0);
-                const barWidth = Math.min(pct, 100);
-                const isSaving = savingCatId === cat.category_id;
+              {categories.map((cat) => renderBudgetItem(cat))}
+            </div>
+          </div>
+        )}
 
-                let fillClass = '';
-                if (pct >= 100) fillClass = ' danger';
-                else if (pct >= 80) fillClass = ' warning';
-
-                return (
-                  <div key={cat.category_id} className="budget-item">
-                    <div className="budget-item-header">
-                      <span className="budget-category">
-                        {cat.category_name}
-                        {cat.is_user_modified && <span className="budget-modified-badge">edited</span>}
-                      </span>
-                      <div className="budget-amounts-group">
-                        <span className="budget-amounts" style={{ color: '#e74c3c' }}>
-                          -${spent.toFixed(2)}
-                        </span>
-                        <span className="budget-amounts" style={{ color: remaining >= 0 ? '#2ecc71' : '#e74c3c' }}>
-                          {remaining >= 0 ? `$${remaining.toFixed(2)} left` : `-$${Math.abs(remaining).toFixed(2)} over`}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="budget-allocator-row">
-                      <label className="budget-allocator-label">{allocMode === 'percent' ? '%' : 'Limit'}</label>
-                      <input
-                        className="budget-limit-input"
-                        type="number"
-                        step={allocMode === 'percent' ? '0.1' : '0.01'}
-                        min="0"
-                        value={limits[cat.category_id] ?? ''}
-                        onChange={(e) => handleLimitChange(cat.category_id, e.target.value)}
-                        onFocus={() => setFocusedCatId(cat.category_id)}
-                        onBlur={() => { setFocusedCatId(null); handleLimitSave(cat.category_id); }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.target.blur(); }
-                        }}
-                        disabled={isSaving}
-                      />
-                      {isSaving && <span className="budget-saving-indicator">saving...</span>}
-                      <span className="budget-available-label">
-                        {focusedCatId === cat.category_id
-                          ? (allocMode === 'percent' && totalBudget > 0
-                              ? `${((Math.max(0, unallocated) / totalBudget) * 100).toFixed(1)}% available fund`
-                              : `$${Math.max(0, unallocated).toFixed(2)} available fund`)
-                          : (remaining >= 0
-                              ? `$${remaining.toFixed(2)} left`
-                              : `-$${Math.abs(remaining).toFixed(2)} over`)}
-                      </span>
-                    </div>
-                    <div className="progress-bar">
-                      <div className={`progress-fill${fillClass}`} style={{ width: `${barWidth}%` }} />
-                    </div>
-                    <span className="budget-percent">{pct}% used</span>
+        {/* Recurring Transactions Panel */}
+        {recurringRules.length > 0 && (
+          <div className="budget-categories-card">
+            <div className="budget-card-header">
+              <h2 className="card-title">Recurring Transactions</h2>
+            </div>
+            <div className="budget-list">
+              {recurringRules.map((rule) => (
+                <div key={rule.id} className="budget-item recurring-rule-item">
+                  <div className="budget-item-header">
+                    <span className="budget-category">
+                      <span className="budget-category-dot" style={{ backgroundColor: getCategoryColor(rule.category_name) }} />
+                      {rule.merchant || rule.category_name}
+                      <span className="recurring-freq-badge">{rule.frequency}</span>
+                    </span>
+                    <span className="budget-amounts">${Number(rule.amount).toFixed(2)}</span>
                   </div>
-                );
-              })}
+                  <div className="recurring-rule-details">
+                    <span>Next: {rule.next_due_date}</span>
+                    <span>{rule.category_name}</span>
+                    <button className="recurring-pause-btn" onClick={() => toggleRuleActive(rule.id, rule.is_active)}>
+                      {rule.is_active ? 'Pause' : 'Resume'}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

@@ -140,3 +140,12 @@ export async function apiGet(path) {
   }
   return res.json();
 }
+
+export async function apiDelete(path) {
+  const res = await request(path, { method: 'DELETE' });
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  if (res.status === 204) return null;
+  return res.json();
+}
