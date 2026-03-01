@@ -5,6 +5,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/' },
   { label: 'Transactions', path: '/transactions' },
+  { label: 'Import', path: '/import' },
   { label: 'Budget', path: '/budget' },
   { label: 'Reports', path: '/reports' },
   { label: 'Categories', path: '/categories' },

@@ -425,7 +425,7 @@ export default function TransactionsPage() {
                   {formSaving ? 'Saving...' : 'Save Transaction'}
                 </button>
                 <button type="button" className="secondary-btn" onClick={() => fileInputRef.current.click()} disabled={uploading || formSaving}>
-                  {uploading ? 'Uploading...' : 'Upload/Photo'}
+                  {uploading ? 'Uploading...' : 'Upload files/Take a photo'}
                 </button>
               </div>
               <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>

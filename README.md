@@ -34,12 +34,17 @@
 
 ## Mobile Access
 To access the app from your phone (same Wi-Fi network):
-1. Find your local IP:
-   ```
-   ifconfig en0 | grep inet
-   ```
-   Look for the `inet` value (e.g. `192.168.1.42`)
-2. Open on your phone: `http://<your-ip>:5173`
+1.  Find your computer's local IP address.
+    *   **On macOS:** Run `ifconfig en0 | grep inet` and find the `inet` value.
+    *   **On Windows (with WSL2):** Run `ipconfig.exe` in your WSL terminal. Look for the "Wireless LAN adapter Wi-Fi" section and find the `IPv4 Address`.
+
+    Example for Windows/WSL2:
+    ```
+    Wireless LAN adapter Wi-Fi:
+       ...
+       IPv4 Address. . . . . . . . . . . : 192.168.1.42  <-- This is the IP to use
+    ```
+2.  Open Safari on your phone and go to `http://<your-ip>:5173` (e.g., `http://192.168.1.42:5173`).
 
 ## Notes
 - Backend reads `GEMINI_API_KEY`, `DATABASE_URL`, and JWT settings from `backend/.env`.

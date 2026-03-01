@@ -3000,3 +3000,45 @@ body {
         animation: none;
     }
 }
+
+/* Styles for Import Statement Page */
+.import-table-wrapper {
+  overflow-x: auto;
+  margin-top: 1.5rem;
+}
+.import-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.import-table th,
+.import-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  vertical-align: middle;
+}
+.import-table th {
+  font-weight: 600;
+  color: #555;
+  background-color: #f9f9f9;
+}
+.import-table-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: #fff;
+  transition: border-color 0.2s;
+}
+.import-table-input:focus {
+  outline: none;
+  border-color: #4a90e2;
+}
+.form-success {
+  background-color: #eaf7ec;
+  color: #27ae60;
+  border: 1px solid #2ecc71;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
