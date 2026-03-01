@@ -234,16 +234,14 @@ export default function BudgetPage() {
 
   const handleModeSwitch = (mode) => {
     if (mode === allocMode) return;
-    // Convert all displayed values
+    // Always convert from originalLimits (saved dollar values) to avoid rounding drift
     const newLimits = {};
-    for (const [catId, val] of Object.entries(limits)) {
-      const dollar = allocMode === 'percent' && totalBudget > 0
-        ? (parseFloat(val) / 100) * totalBudget
-        : parseFloat(val);
+    for (const [catId, dollarVal] of Object.entries(originalLimits.current)) {
+      const dollar = Number(dollarVal);
       if (mode === 'percent' && totalBudget > 0) {
         newLimits[catId] = ((dollar / totalBudget) * 100).toFixed(1);
       } else {
-        newLimits[catId] = isNaN(dollar) ? val : dollar.toFixed(2);
+        newLimits[catId] = isNaN(dollar) ? dollarVal : dollar.toFixed(2);
       }
     }
     setLimits(newLimits);

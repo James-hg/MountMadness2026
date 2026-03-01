@@ -2493,7 +2493,7 @@ body {
     }
 
     .calendar-day-cashflow {
-        font-size: 0.5rem;
+        font-size: 0.6rem;
     }
 
     .calendar-nav {
@@ -4121,5 +4121,166 @@ body {
     .goals-chat-confirm-actions .secondary-btn,
     .goals-chat-confirm-actions .primary-btn {
         flex: 1;
+    }
+}
+
+/* ══════════════════════════════════════════
+   Phone-specific styles (max-width: 480px)
+   Samsung Galaxy S25 Ultra ~ 412px viewport
+   ══════════════════════════════════════════ */
+@media (max-width: 480px) {
+
+    /* ── Page container: reduce side padding ── */
+    .page-container {
+        padding: 0 3% 16px 3%;
+    }
+
+    /* ── Cards: reduce padding ── */
+    .card {
+        padding: 16px;
+    }
+
+    .budget-categories-card {
+        padding: 16px;
+    }
+
+    .summary-card {
+        padding: 14px;
+    }
+
+    /* ── Summary cards: single column ── */
+    .summary-cards {
+        grid-template-columns: 1fr;
+    }
+
+    /* ── Page title: slightly smaller ── */
+    .page-title {
+        font-size: 1.25rem;
+    }
+
+    /* ── Auth panel: tighter padding ── */
+    .auth-panel {
+        padding: 20px 16px;
+    }
+
+    /* ── Calendar: tighter cells ── */
+    .calendar-day {
+        min-height: 48px;
+        padding: 2px;
+    }
+
+    .calendar-day-number {
+        font-size: 0.7rem;
+    }
+
+    .calendar-weekday {
+        font-size: 0.6rem;
+        padding: 4px 0;
+    }
+
+    .calendar-grid {
+        gap: 1px;
+    }
+
+    .calendar-month-title {
+        font-size: 0.9rem;
+        min-width: 120px;
+    }
+
+    /* ── Import table: more compact ── */
+    .import-table th,
+    .import-table td {
+        padding: 6px 6px;
+        font-size: 0.8rem;
+    }
+
+    .import-table-input {
+        padding: 4px 6px;
+        font-size: 0.8rem;
+    }
+
+    /* ── Form elements: override inline minWidth ── */
+    .form-group {
+        min-width: 0 !important;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-select {
+        min-width: 0 !important;
+    }
+
+    /* ── Transaction items: tighter spacing ── */
+    .txn-item {
+        padding: 8px 8px;
+    }
+
+    .txn-item-merchant {
+        max-width: 120px;
+        font-size: 0.85rem;
+    }
+
+    .txn-item-amount {
+        font-size: 0.85rem;
+    }
+
+    /* ── Transaction edit: stack inputs ── */
+    .txn-edit-row {
+        flex-wrap: wrap;
+    }
+
+    .txn-edit-input {
+        flex: 1 1 100%;
+    }
+
+    /* ── Budget allocator: allow wrapping ── */
+    .budget-allocator-row {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .budget-limit-input {
+        max-width: 100px;
+    }
+
+    /* ── Reports doughnut: smaller ── */
+    .reports-doughnut-container {
+        width: 160px;
+        height: 160px;
+    }
+
+    /* ── Dashboard: reduce padding ── */
+    .container {
+        padding: 0 3% 16px 3%;
+    }
+
+    .graph-panel {
+        padding: 12px 6px 20px 6px;
+    }
+
+    /* ── Buttons: prevent overflow ── */
+    .primary-btn,
+    .secondary-btn {
+        min-width: 0;
+        white-space: nowrap;
+        padding: 8px 14px;
+        font-size: 0.85rem;
+    }
+
+    /* ── Chat widget: tighter position ── */
+    .chat-widget-root {
+        right: 12px;
+        bottom: 12px;
+    }
+
+    .chat-widget-toggle {
+        width: 44px;
+        height: 44px;
+    }
+
+    /* ── Goals filters: smaller buttons ── */
+    .goals-filter-btn {
+        padding: 6px 10px;
+        font-size: 0.78rem;
     }
 }
