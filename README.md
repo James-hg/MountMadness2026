@@ -32,6 +32,15 @@
 - Backend health: http://localhost:8000/health
 - FastAPI docs: http://localhost:8000/docs
 
+## Mobile Access
+To access the app from your phone (same Wi-Fi network):
+1. Find your local IP:
+   ```
+   ifconfig en0 | grep inet
+   ```
+   Look for the `inet` value (e.g. `192.168.1.42`)
+2. Open on your phone: `http://<your-ip>:5173`
+
 ## Notes
 - Backend reads `GEMINI_API_KEY`, `DATABASE_URL`, and JWT settings from `backend/.env`.
 - Categories API endpoints:
