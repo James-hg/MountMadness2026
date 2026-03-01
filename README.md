@@ -12,9 +12,9 @@
 
 ## Screenshots
 
-| Login | Sign Up | Dashboard |
-|:---:|:---:|:---:|
-| ![Login](Webpage_image/Login.png) | ![Sign Up](Webpage_image/Signin.png) | ![Dashboard](Webpage_image/Mainpage.png) |
+| Login | Sign Up |
+|:---:|:---:|
+| ![Login](Webpage_image/Login.png) | ![Sign Up](Webpage_image/Signin.png) |
 
 ---
 
