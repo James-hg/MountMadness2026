@@ -29,6 +29,7 @@ class BudgetCategoryOut(BaseModel):
     spent_amount: Decimal
     remaining_amount: Decimal
     is_user_modified: bool
+    is_fixed: bool = False
 
     @field_serializer("limit_amount", "spent_amount", "remaining_amount")
     def serialize_decimal(self, value: Decimal) -> str:
@@ -186,6 +187,37 @@ async def _resolve_scope(
     return await _get_visible_expense_categories(connection, user_id)
 
 
+async def _carry_forward_fixed_categories(
+    connection: AsyncConnection,
+    user_id: UUID,
+    month_start: date,
+    currency: str,
+) -> None:
+    prev_month = (month_start.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            INSERT INTO budgets (user_id, category_id, month_start, limit_amount, currency, is_user_modified)
+            SELECT %s, ufc.category_id, %s, prev_b.limit_amount, %s, TRUE
+            FROM user_fixed_categories ufc
+            JOIN budgets prev_b
+                ON prev_b.user_id = ufc.user_id
+                AND prev_b.category_id = ufc.category_id
+                AND prev_b.month_start = %s
+            WHERE ufc.user_id = %s
+              AND NOT EXISTS (
+                  SELECT 1 FROM budgets b
+                  WHERE b.user_id = %s
+                    AND b.category_id = ufc.category_id
+                    AND b.month_start = %s
+              )
+            ON CONFLICT (user_id, category_id, month_start) DO NOTHING
+            """,
+            (user_id, month_start, currency, prev_month, user_id, user_id, month_start),
+        )
+
+
 async def _fetch_existing_budgets(
     connection: AsyncConnection,
     user_id: UUID,
@@ -311,10 +343,13 @@ async def _fetch_month_budget_rows(
                 COALESCE(ms.spent_amount, 0) AS spent_amount,
                 b.limit_amount - COALESCE(ms.spent_amount, 0) AS remaining_amount,
                 b.is_user_modified,
-                b.currency
+                b.currency,
+                CASE WHEN ufc.id IS NOT NULL THEN TRUE ELSE FALSE END AS is_fixed
             FROM budgets b
             JOIN categories c ON c.id = b.category_id
             LEFT JOIN month_spend ms ON ms.category_id = b.category_id
+            LEFT JOIN user_fixed_categories ufc
+                ON ufc.user_id = b.user_id AND ufc.category_id = b.category_id
             WHERE b.user_id = %s
               AND b.month_start = %s
             ORDER BY c.name ASC
@@ -340,6 +375,7 @@ async def _fetch_budget_snapshot(
             spent_amount=quantize_money(row["spent_amount"]),
             remaining_amount=quantize_money(row["remaining_amount"]),
             is_user_modified=row["is_user_modified"],
+            is_fixed=row.get("is_fixed", False),
         )
         for row in rows
     ]
@@ -411,6 +447,8 @@ async def post_budget_total(
                     "UPDATE budgets SET is_user_modified = FALSE WHERE user_id = %s AND month_start = %s",
                     (user_id, month_start),
                 )
+
+        await _carry_forward_fixed_categories(connection, user_id, month_start, currency)
 
         existing_budgets = await _fetch_existing_budgets(connection, user_id, month_start)
 

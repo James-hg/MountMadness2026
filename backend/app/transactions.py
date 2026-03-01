@@ -28,6 +28,8 @@ class TransactionCreate(BaseModel):
     category_id: UUID
     merchant: str | None = Field(default=None, max_length=160)
     note: str | None = None
+    make_recurring: bool = False
+    recurring_frequency: Literal["monthly", "biweekly", "weekly"] | None = None
 
     @field_validator("merchant", "note", mode="before")
     @classmethod
@@ -79,6 +81,7 @@ class TransactionResponse(BaseModel):
     occurred_on: date
     merchant: str | None
     note: str | None
+    recurring_rule_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -234,37 +237,37 @@ def _build_list_filters(
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
 ) -> tuple[str, list[object]]:
-    filters = ["user_id = %s", "deleted_at IS NULL"]
+    filters = ["t.user_id = %s", "t.deleted_at IS NULL"]
     params: list[object] = [user_id]
 
     if date_from is not None:
-        filters.append("occurred_on >= %s")
+        filters.append("t.occurred_on >= %s")
         params.append(date_from)
 
     if date_to is not None:
-        filters.append("occurred_on <= %s")
+        filters.append("t.occurred_on <= %s")
         params.append(date_to)
 
     if type_filter is not None:
-        filters.append("type = %s")
+        filters.append("t.type = %s")
         params.append(type_filter)
 
     if category_id is not None:
-        filters.append("category_id = %s")
+        filters.append("t.category_id = %s")
         params.append(category_id)
 
     search = q.strip() if q else ""
     if search:
         pattern = f"%{search}%"
-        filters.append("(merchant ILIKE %s OR note ILIKE %s)")
+        filters.append("(t.merchant ILIKE %s OR t.note ILIKE %s)")
         params.extend([pattern, pattern])
 
     if amount_min is not None:
-        filters.append("amount >= %s")
+        filters.append("t.amount >= %s")
         params.append(amount_min)
 
     if amount_max is not None:
-        filters.append("amount <= %s")
+        filters.append("t.amount <= %s")
         params.append(amount_max)
 
     return " AND ".join(filters), params
@@ -288,7 +291,8 @@ async def create_transaction(
             """
             INSERT INTO transactions (user_id, category_id, type, amount, occurred_on, merchant, note)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
+            RETURNING id, user_id, category_id, type, amount, occurred_on, merchant, note,
+                      recurring_rule_id, created_at, updated_at
             """,
             (
                 user_id,
@@ -301,6 +305,24 @@ async def create_transaction(
             ),
         )
         row = await cursor.fetchone()
+
+    if payload.make_recurring:
+        from .recurring import _advance_date
+        frequency = payload.recurring_frequency or "monthly"
+        next_due = _advance_date(payload.occurred_on, frequency, payload.occurred_on)
+        async with connection.cursor() as cursor:
+            await cursor.execute(
+                """
+                INSERT INTO recurring_rules
+                    (user_id, category_id, type, amount, merchant, note, frequency, anchor_date, next_due_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id, payload.category_id, payload.type, payload.amount,
+                    payload.merchant, payload.note, frequency,
+                    payload.occurred_on, next_due,
+                ),
+            )
 
     return TransactionResponse.model_validate(row)
 
@@ -574,18 +596,20 @@ async def upload_bank_statement(
 
 
 ALLOWED_SORTS = {
-    "date_asc": "occurred_on ASC",
-    "date_desc": "occurred_on DESC",
-    "amount_asc": "amount ASC",
-    "amount_desc": "amount DESC",
-    "merchant_asc": "LOWER(merchant) ASC NULLS LAST",
-    "merchant_desc": "LOWER(merchant) DESC NULLS LAST",
+    "date_asc": "t.occurred_on ASC",
+    "date_desc": "t.occurred_on DESC",
+    "amount_asc": "t.amount ASC",
+    "amount_desc": "t.amount DESC",
+    "merchant_asc": "LOWER(t.merchant) ASC NULLS LAST",
+    "merchant_desc": "LOWER(t.merchant) DESC NULLS LAST",
+    "category_asc": "LOWER(c.name) ASC NULLS LAST",
+    "category_desc": "LOWER(c.name) DESC NULLS LAST",
 }
 
 
 def _build_order_clause(sort_by: str | None) -> str:
     if not sort_by:
-        return "occurred_on DESC, created_at DESC"
+        return "t.occurred_on DESC, t.created_at DESC"
 
     clauses = []
     for key in sort_by.split(","):
@@ -594,7 +618,7 @@ def _build_order_clause(sort_by: str | None) -> str:
             clauses.append(ALLOWED_SORTS[key])
 
     if not clauses:
-        return "occurred_on DESC, created_at DESC"
+        return "t.occurred_on DESC, t.created_at DESC"
 
     return ", ".join(clauses)
 
@@ -631,15 +655,16 @@ async def list_transactions(
 
     async with connection.cursor() as cursor:
         await cursor.execute(
-            f"SELECT COUNT(*) AS total FROM transactions WHERE {where_clause}",
+            f"SELECT COUNT(*) AS total FROM transactions t WHERE {where_clause}",
             params,
         )
         count_row = await cursor.fetchone()
 
         await cursor.execute(
             f"""
-            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
-            FROM transactions
+            SELECT t.id, t.user_id, t.category_id, t.type, t.amount, t.occurred_on, t.merchant, t.note, t.recurring_rule_id, t.created_at, t.updated_at
+            FROM transactions t
+            LEFT JOIN categories c ON t.category_id = c.id
             WHERE {where_clause}
             ORDER BY {order_clause}
             LIMIT %s OFFSET %s
@@ -739,7 +764,7 @@ async def get_transaction(
     async with connection.cursor() as cursor:
         await cursor.execute(
             """
-            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
+            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, recurring_rule_id, created_at, updated_at
             FROM transactions
             WHERE id = %s
               AND user_id = %s
@@ -767,7 +792,7 @@ async def update_transaction(
     async with connection.cursor() as cursor:
         await cursor.execute(
             """
-            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
+            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, recurring_rule_id, created_at, updated_at
             FROM transactions
             WHERE id = %s
               AND user_id = %s
@@ -811,7 +836,7 @@ async def update_transaction(
             WHERE id = %s
               AND user_id = %s
               AND deleted_at IS NULL
-            RETURNING id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
+            RETURNING id, user_id, category_id, type, amount, occurred_on, merchant, note, recurring_rule_id, created_at, updated_at
             """,
             [*params, transaction_id, user_id],
         )

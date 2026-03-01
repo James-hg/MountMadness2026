@@ -10,6 +10,8 @@ from .categories import router as categories_router
 from .config import settings
 from .dashboard import router as dashboard_router
 from .database import close_db_pool, init_db_pool
+from .fixed_categories import router as fixed_categories_router
+from .recurring import router as recurring_router
 from .reports import router as reports_router
 from .transactions import router as transactions_router
 
@@ -28,6 +30,8 @@ app.include_router(budget_router)
 app.include_router(categories_router)
 app.include_router(reports_router)
 app.include_router(dashboard_router)
+app.include_router(fixed_categories_router)
+app.include_router(recurring_router)
 
 
 class PromptRequest(BaseModel):
