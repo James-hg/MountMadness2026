@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import NavBar from './NavBar';
-import { apiGet, apiPost, apiPatch } from '../api';
+import { apiGet, apiPost, apiPatch, API_BASE } from '../api';
 
 function formatDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -120,6 +120,8 @@ export default function TransactionsPage() {
   const [formNote, setFormNote] = useState('');
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
   const [categories, setCategories] = useState([]);
 
   // Inline edit state
@@ -209,6 +211,54 @@ export default function TransactionsPage() {
     setFormMerchant('');
     setFormNote('');
     setFormError('');
+  };
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    setFormError('');
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      setFormError("Authentication error: No token found.");
+      setUploading(false);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${API_BASE}/transactions/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to upload and process receipt.');
+      }
+
+      const data = await response.json();
+
+      // Autofill the form
+      setFormType('expense');
+      setFormAmount(data.amount || '0.00');
+      setFormDate(data.occurred_on || formatDate(new Date()));
+      setFormCategoryId(data.category_id || '');
+      setFormMerchant(data.merchant || '');
+      setFormNote(data.note || 'Imported from receipt');
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleSubmitTransaction = async (e) => {
@@ -370,7 +420,18 @@ export default function TransactionsPage() {
                   <input type="text" placeholder="Optional note..." value={formNote} onChange={(e) => setFormNote(e.target.value)} />
                 </div>
               </div>
-              <button className="primary-btn" disabled={formSaving}>{formSaving ? 'Saving...' : 'Save Transaction'}</button>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <button className="primary-btn" disabled={formSaving || uploading}>
+                  {formSaving ? 'Saving...' : 'Save Transaction'}
+                </button>
+                <button type="button" className="secondary-btn" onClick={() => fileInputRef.current.click()} disabled={uploading || formSaving}>
+                  {uploading ? 'Uploading...' : 'Upload/Photo'}
+                </button>
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                Tap the button to snap a photo or choose an existing file
+              </div>
+              <input type="file" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/*,application/pdf" capture="environment" />
             </form>
           </div>
         )}
