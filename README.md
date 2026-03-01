@@ -31,6 +31,11 @@
 
 ## Notes
 - Backend reads `GEMINI_API_KEY`, `DATABASE_URL`, and JWT settings from `backend/.env`.
+- Categories API endpoints:
+  - `GET /api/categories` (optional query: `kind=income|expense`)
+  - `POST /api/categories` (body: name, kind, optional icon/color)
+  - `PUT /api/categories/{category_id}` (body: name?, icon?, color?)
+  - `DELETE /api/categories/{category_id}`
 - Transactions API endpoints:
   - `POST /transactions`
   - `GET /transactions`
