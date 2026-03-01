@@ -1,14 +1,20 @@
+import base64
+import json
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File
 from psycopg import AsyncConnection
-from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator, ConfigDict
 
 from .auth import get_current_user_id
 from .database import get_db_connection
+from .categories import CategoryOut
+from .config import settings
 
 router = APIRouter(tags=["transactions"])
 
@@ -23,6 +29,8 @@ class TransactionCreate(BaseModel):
     category_id: UUID
     merchant: str | None = Field(default=None, max_length=160)
     note: str | None = None
+    make_recurring: bool = False
+    recurring_frequency: Literal["monthly", "biweekly", "weekly"] | None = None
 
     @field_validator("merchant", "note", mode="before")
     @classmethod
@@ -80,6 +88,43 @@ class TransactionResponse(BaseModel):
     @field_serializer("amount")
     def serialize_amount(self, value: Decimal) -> str:
         return _money(value)
+
+
+class TransactionUploadResponse(BaseModel):
+    # Fields extracted from the receipt for user confirmation
+    merchant: str
+    amount: Amount
+    occurred_on: date
+    category_id: UUID | None
+    note: str | None
+
+    # Data to help the frontend build a confirmation form
+    all_expense_categories: list[CategoryOut]
+
+    @field_serializer("amount")
+    def serialize_amount(self, value: Decimal) -> str:
+        return _money(value)
+
+class StatementTransactionItem(BaseModel):
+    # For one extracted transaction from a statement
+    merchant: str
+    amount: Amount
+    occurred_on: date = Field(alias="date")
+    category: str | None = None  # category name from AI, may not match exactly with user's categories 
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)  
+
+    @field_serializer("amount")
+    def serialize_amount(self, value: Decimal) -> str:
+        return _money(value)
+
+
+class StatementUploadResponse(BaseModel):
+    extracted_transactions: list[StatementTransactionItem]
+    all_expense_categories: list[CategoryOut]
+
+class BulkTransactionCreate(BaseModel):
+    transactions: list[TransactionCreate]
 
 
 class TransactionListResponse(BaseModel):
@@ -195,37 +240,37 @@ def _build_list_filters(
     amount_min: Decimal | None = None,
     amount_max: Decimal | None = None,
 ) -> tuple[str, list[object]]:
-    filters = ["user_id = %s", "deleted_at IS NULL"]
+    filters = ["t.user_id = %s", "t.deleted_at IS NULL"]
     params: list[object] = [user_id]
 
     if date_from is not None:
-        filters.append("occurred_on >= %s")
+        filters.append("t.occurred_on >= %s")
         params.append(date_from)
 
     if date_to is not None:
-        filters.append("occurred_on <= %s")
+        filters.append("t.occurred_on <= %s")
         params.append(date_to)
 
     if type_filter is not None:
-        filters.append("type = %s")
+        filters.append("t.type = %s")
         params.append(type_filter)
 
     if category_id is not None:
-        filters.append("category_id = %s")
+        filters.append("t.category_id = %s")
         params.append(category_id)
 
     search = q.strip() if q else ""
     if search:
         pattern = f"%{search}%"
-        filters.append("(merchant ILIKE %s OR note ILIKE %s)")
+        filters.append("(t.merchant ILIKE %s OR t.note ILIKE %s)")
         params.extend([pattern, pattern])
 
     if amount_min is not None:
-        filters.append("amount >= %s")
+        filters.append("t.amount >= %s")
         params.append(amount_min)
 
     if amount_max is not None:
-        filters.append("amount <= %s")
+        filters.append("t.amount <= %s")
         params.append(amount_max)
 
     return " AND ".join(filters), params
@@ -249,7 +294,8 @@ async def create_transaction(
             """
             INSERT INTO transactions (user_id, category_id, type, amount, occurred_on, merchant, note)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
+            RETURNING id, user_id, category_id, type, amount, occurred_on, merchant, note,
+                      recurring_rule_id, created_at, updated_at
             """,
             (
                 user_id,
@@ -263,22 +309,311 @@ async def create_transaction(
         )
         row = await cursor.fetchone()
 
+    if payload.make_recurring:
+        from .recurring import _advance_date
+        frequency = payload.recurring_frequency or "monthly"
+        next_due = _advance_date(payload.occurred_on, frequency, payload.occurred_on)
+        async with connection.cursor() as cursor:
+            await cursor.execute(
+                """
+                INSERT INTO recurring_rules
+                    (user_id, category_id, type, amount, merchant, note, frequency, anchor_date, next_due_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id, payload.category_id, payload.type, payload.amount,
+                    payload.merchant, payload.note, frequency,
+                    payload.occurred_on, next_due,
+                ),
+            )
+
     return TransactionResponse.model_validate(row)
+
+@router.post("/transactions/bulk", status_code=201)
+async def create_bulk_transactions(
+    payload: BulkTransactionCreate,
+    user_id: UUID = Depends(get_current_user_id),
+    connection: AsyncConnection = Depends(get_db_connection),
+):
+    """Creates multiple transactions in a single database transaction."""
+    if not payload.transactions:
+        return {"created_count": 0, "message": "No transactions to create."}
+
+    # 1. Validate all categories in one go for efficiency
+    category_ids = {t.category_id for t in payload.transactions}
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            "SELECT id, kind, is_system, user_id FROM categories WHERE id = ANY(%s)",
+            (list(category_ids),),
+        )
+        rows = await cursor.fetchall()
+
+    valid_categories = {row['id']: row for row in rows}
+
+    # Check for missing or forbidden categories
+    for t in payload.transactions:
+        cat_id = t.category_id
+        if cat_id not in valid_categories:
+            raise HTTPException(status_code=404, detail=f"Category with ID {cat_id} not found.")
+        
+        cat = valid_categories[cat_id]
+        if not cat['is_system'] and cat['user_id'] != user_id:
+            raise HTTPException(status_code=403, detail=f"Forbidden access to category {cat_id}.")
+        
+        # Check for type mismatch
+        if cat['kind'] != t.type:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Category '{cat['name']}' kind ({cat['kind']}) and transaction type '{t.type}' mismatch."
+            )
+
+    # 2. Prepare data for bulk insert
+    insert_data = [
+        (user_id, t.category_id, t.type, t.amount, t.occurred_on, t.merchant, t.note)
+        for t in payload.transactions
+    ]
+
+    # 3. Perform bulk insert within a single database transaction
+    try:
+        async with connection.transaction():
+            async with connection.cursor() as cursor:
+                # Use executemany for efficient bulk insertion
+                await cursor.executemany(
+                    """
+                    INSERT INTO transactions (user_id, category_id, type, amount, occurred_on, merchant, note)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    insert_data,
+                )
+        return {"created_count": len(insert_data)}
+    except Exception as e:
+        # Consider logging the full error here
+        raise HTTPException(status_code=500, detail=f"Database bulk insert failed.")
+
+
+@router.post("/transactions/upload", response_model=TransactionUploadResponse, status_code=200)
+async def upload_transaction_receipt(
+    file: UploadFile = File(...),
+    user_id: UUID = Depends(get_current_user_id),
+    connection: AsyncConnection = Depends(get_db_connection),
+) -> TransactionUploadResponse:
+    if not settings.gemini_api_key:
+        raise HTTPException(status_code=501, detail="Gemini API key is not configured")
+
+    if file.content_type not in ["application/pdf", "image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and Images are supported.")
+
+    # 1. Read and encode file
+    file_content = await file.read()
+    encoded_data = base64.b64encode(file_content).decode("utf-8")
+
+    # 2. Get categories to help AI match and for the response
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            SELECT id, user_id, name, slug, kind, icon, color, is_system, created_at
+            FROM categories 
+            WHERE (is_system = TRUE OR user_id = %s) AND kind = 'expense'
+            ORDER BY name
+            """,
+            (user_id,)
+        )
+        cat_rows = await cursor.fetchall()
+    
+    all_expense_categories = [CategoryOut.model_validate(row) for row in cat_rows]
+    cat_map = {cat.name.lower(): cat.id for cat in all_expense_categories}
+    cat_list_str = ", ".join(cat_map.keys())
+
+    # 3. Call Gemini API
+    prompt = f"""
+    Analyze this receipt or bill. Extract the following fields in JSON format:
+    - merchant (string): Name of the store or biller.
+    - date (string): Transaction date in YYYY-MM-DD format. If not found, use today's date {date.today()}.
+    - amount (float): The total amount paid.
+    - category (string): Choose the best match from this list: [{cat_list_str}]. If unsure, pick the first one.
+    
+    Return ONLY raw JSON.
+    """
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
+    params = {"key": settings.gemini_api_key}
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {
+                    "inline_data": {
+                        "mime_type": file.content_type,
+                        "data": encoded_data
+                    }
+                }
+            ]
+        }]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(url, params=params, json=payload)
+    except httpx.RequestError as exc:
+        # network error or timeout
+        raise HTTPException(status_code=502, detail=f"AI provider request failed: {str(exc)}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="AI provider timeout")
+
+    if response.status_code != 200:
+        # log response content for debugging and surface in error
+        try:
+            body = response.text
+        except Exception:
+            body = '<unreadable body>'
+        print(f"AI provider returned {response.status_code}: {body}")
+        raise HTTPException(status_code=502, detail=f"AI provider error ({response.status_code}): {body}")
+
+    # 4. Parse AI Response
+    try:
+        ai_data = response.json()
+        text_resp = ai_data["candidates"][0]["content"]["parts"][0]["text"]
+        # Strip markdown code blocks if present
+        if "```json" in text_resp:
+            text_resp = text_resp.split("```json")[1].split("```").strip()
+        elif "```" in text_resp:
+            text_resp = text_resp.split("```")[1].strip()
+        
+        extracted = json.loads(text_resp.strip())
+        
+        merchant = extracted.get("merchant", "Unknown Merchant")
+        amount = Decimal(str(extracted.get("amount", 0)))
+        occurred_on = extracted.get("date", date.today().isoformat())
+        category_name = extracted.get("category", "").lower()
+        
+        # Fallback to first category if match fails
+        category_id = cat_map.get(category_name)
+        if not category_id and all_expense_categories:
+            # Fallback to the first category in the list if AI fails to match
+            category_id = all_expense_categories[0].id
+            
+    except (KeyError, IndexError, json.JSONDecodeError, ValueError, Exception) as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract valid data from receipt: {str(e)}")
+
+    # 5. Return extracted data for confirmation
+    return TransactionUploadResponse(
+        merchant=merchant,
+        amount=amount,
+        occurred_on=date.fromisoformat(occurred_on),
+        category_id=category_id,
+        note="Imported from receipt",
+        all_expense_categories=all_expense_categories,
+    )
+
+@router.post("/transactions/upload-statement", response_model=StatementUploadResponse, status_code=200)
+async def upload_bank_statement(
+    file: UploadFile = File(...),
+    user_id: UUID = Depends(get_current_user_id),
+    connection: AsyncConnection = Depends(get_db_connection),
+) -> StatementUploadResponse:
+    if not settings.gemini_api_key:
+        raise HTTPException(status_code=501, detail="Gemini API key is not configured")
+
+    if file.content_type not in ["application/pdf", "image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and Images are supported.")
+
+    file_content = await file.read()
+    encoded_data = base64.b64encode(file_content).decode("utf-8")
+
+    async with connection.cursor() as cursor:
+        await cursor.execute(
+            """
+            SELECT id, user_id, name, slug, kind, icon, color, is_system, created_at
+            FROM categories 
+            WHERE (is_system = TRUE OR user_id = %s) AND kind = 'expense'
+            ORDER BY name
+            """,
+            (user_id,)
+        )
+        cat_rows = await cursor.fetchall()
+    
+    all_expense_categories = [CategoryOut.model_validate(row) for row in cat_rows]
+
+    prompt = f"""
+    Analyze this bank statement document. Identify all individual debit transactions (expenses).
+    For each transaction, extract the following fields.
+    Return a JSON array of objects, with one object per transaction.
+    
+    The JSON schema for each object should be:
+    - "merchant" (string): The name of the merchant or biller.
+    - "date" (string): The transaction date in YYYY-MM-DD format.
+    - "amount" (float): The total amount paid, as a positive number.
+    - "category" (string, optional): If you can identify a category from the following list, include it: [{', '.join(cat.name for cat in all_expense_categories)}]. If unsure, omit this field.
+    
+    Example:
+    [
+      {{ "merchant": "STARBUCKS", "date": "2024-05-20", "amount": 5.75, "category": "Coffee Shops" }},
+      {{ "merchant": "AMAZON.COM", "date": "2024-05-19", "amount": 34.99, "category": "Online Shopping" }},
+    ]
+    
+    Return ONLY the raw JSON array. Do not include any other text or explanations.
+    If no transactions are found, return an empty array [].
+    """
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.gemini_model}:generateContent"
+    params = {"key": settings.gemini_api_key}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": file.content_type, "data": encoded_data}}]}]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client: # Increased timeout for larger docs
+            response = await client.post(url, params=params, json=payload)
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"AI provider request failed: {str(exc)}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="AI provider timeout")
+
+    if response.status_code != 200:
+        body = response.text
+        raise HTTPException(status_code=502, detail=f"AI provider error ({response.status_code}): {body}")
+
+    try:
+        ai_data = response.json()
+        text_resp = ai_data["candidates"][0]["content"]["parts"][0]["text"]
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text_resp)
+        if match:
+            text_resp = match.group(1).strip()
+        else:
+            text_resp = text_resp.strip()
+
+        extracted_list = json.loads(text_resp)
+        
+        if not isinstance(extracted_list, list):
+            raise ValueError("AI did not return a JSON array.")
+
+        validated_transactions = [StatementTransactionItem.model_validate(item) for item in extracted_list]
+            
+    except (KeyError, IndexError, json.JSONDecodeError, ValueError, Exception) as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract valid data from statement: {str(e)}")
+
+    return StatementUploadResponse(
+        extracted_transactions=validated_transactions,
+        all_expense_categories=all_expense_categories,
+    )
+
 
 
 ALLOWED_SORTS = {
-    "date_asc": "occurred_on ASC",
-    "date_desc": "occurred_on DESC",
-    "amount_asc": "amount ASC",
-    "amount_desc": "amount DESC",
-    "merchant_asc": "LOWER(merchant) ASC NULLS LAST",
-    "merchant_desc": "LOWER(merchant) DESC NULLS LAST",
+    "date_asc": "t.occurred_on ASC",
+    "date_desc": "t.occurred_on DESC",
+    "amount_asc": "t.amount ASC",
+    "amount_desc": "t.amount DESC",
+    "merchant_asc": "LOWER(t.merchant) ASC NULLS LAST",
+    "merchant_desc": "LOWER(t.merchant) DESC NULLS LAST",
+    "category_asc": "LOWER(c.name) ASC NULLS LAST",
+    "category_desc": "LOWER(c.name) DESC NULLS LAST",
 }
 
 
 def _build_order_clause(sort_by: str | None) -> str:
     if not sort_by:
-        return "occurred_on DESC, created_at DESC"
+        return "t.occurred_on DESC, t.created_at DESC"
 
     clauses = []
     for key in sort_by.split(","):
@@ -287,7 +622,7 @@ def _build_order_clause(sort_by: str | None) -> str:
             clauses.append(ALLOWED_SORTS[key])
 
     if not clauses:
-        return "occurred_on DESC, created_at DESC"
+        return "t.occurred_on DESC, t.created_at DESC"
 
     return ", ".join(clauses)
 
@@ -324,15 +659,16 @@ async def list_transactions(
 
     async with connection.cursor() as cursor:
         await cursor.execute(
-            f"SELECT COUNT(*) AS total FROM transactions WHERE {where_clause}",
+            f"SELECT COUNT(*) AS total FROM transactions t WHERE {where_clause}",
             params,
         )
         count_row = await cursor.fetchone()
 
         await cursor.execute(
             f"""
-            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
-            FROM transactions
+            SELECT t.id, t.user_id, t.category_id, t.type, t.amount, t.occurred_on, t.merchant, t.note, t.created_at, t.updated_at
+            FROM transactions t
+            LEFT JOIN categories c ON t.category_id = c.id
             WHERE {where_clause}
             ORDER BY {order_clause}
             LIMIT %s OFFSET %s
@@ -432,7 +768,7 @@ async def get_transaction(
     async with connection.cursor() as cursor:
         await cursor.execute(
             """
-            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
+            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, recurring_rule_id, created_at, updated_at
             FROM transactions
             WHERE id = %s
               AND user_id = %s
@@ -460,7 +796,7 @@ async def update_transaction(
     async with connection.cursor() as cursor:
         await cursor.execute(
             """
-            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
+            SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, recurring_rule_id, created_at, updated_at
             FROM transactions
             WHERE id = %s
               AND user_id = %s
@@ -504,7 +840,7 @@ async def update_transaction(
             WHERE id = %s
               AND user_id = %s
               AND deleted_at IS NULL
-            RETURNING id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
+            RETURNING id, user_id, category_id, type, amount, occurred_on, merchant, note, recurring_rule_id, created_at, updated_at
             """,
             [*params, transaction_id, user_id],
         )

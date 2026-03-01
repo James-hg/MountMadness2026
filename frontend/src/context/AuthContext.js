@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { apiPost } from '../api';
+import { clearChatStorageForUser } from '../services/chatClient';
 
 const AuthContext = createContext(null);
 
@@ -70,6 +71,7 @@ export function AuthProvider({ children }) {
   }, [saveSession]);
 
   const logout = useCallback(() => {
+    const currentUser = user;
     if (!MOCK_MODE) {
       const token = localStorage.getItem('access_token');
       const refreshToken = localStorage.getItem('refresh_token');
@@ -84,11 +86,12 @@ export function AuthProvider({ children }) {
         }).catch(() => {});
       }
     }
+    clearChatStorageForUser(currentUser);
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
     setUser(null);
-  }, []);
+  }, [user]);
 
   const updateUser = useCallback((updatedUser) => {
     localStorage.setItem('user', JSON.stringify(updatedUser));

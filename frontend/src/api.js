@@ -1,4 +1,4 @@
-const API_BASE = process.env.REACT_APP_API_BASE_URL || '';
+export const API_BASE = process.env.REACT_APP_API_BASE_URL || '';
 let refreshInFlight = null;
 
 function getToken() {
@@ -16,6 +16,13 @@ function saveSession(data) {
 }
 
 function clearSession() {
+  try {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('mm_chat_widget_'))
+      .forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Ignore storage errors.
+  }
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
@@ -109,6 +116,18 @@ export async function apiPost(path, body) {
   return res.json();
 }
 
+export async function apiUpload(path, formData) {
+  const res = await request(path, {
+    method: 'POST',
+    // Do NOT set Content-Type — browser sets it automatically with multipart boundary
+    body: formData,
+  });
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  return res.json();
+}
+
 export async function apiPatch(path, body) {
   const res = await request(path, {
     method: 'PATCH',
@@ -138,5 +157,14 @@ export async function apiGet(path) {
   if (!res.ok) {
     throw new Error(await parseErrorResponse(res));
   }
+  return res.json();
+}
+
+export async function apiDelete(path) {
+  const res = await request(path, { method: 'DELETE' });
+  if (!res.ok) {
+    throw new Error(await parseErrorResponse(res));
+  }
+  if (res.status === 204) return null;
   return res.json();
 }

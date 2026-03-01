@@ -33,6 +33,9 @@ export default function LoginPage() {
   return (
     <div className="auth-container">
       <div className="auth-panel">
+        <div className="auth-logo">
+          <img src="/MountainFinance.png" alt="Mountain Finance" />
+        </div>
         <div className="auth-tabs">
           <Link className="auth-tab active" to="/auth/login">Login</Link>
           <Link className="auth-tab" to="/auth/signup">Register</Link>

@@ -5,7 +5,9 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/' },
   { label: 'Transactions', path: '/transactions' },
+  { label: 'Import', path: '/import' },
   { label: 'Budget', path: '/budget' },
+  { label: 'Goals', path: '/goals' },
   { label: 'Reports', path: '/reports' },
   { label: 'Categories', path: '/categories' },
   { label: 'Settings', path: '/settings' },
@@ -27,7 +29,9 @@ export default function NavBar() {
 
   return (
     <nav className="top-nav">
-      <div className="nav-logo"></div>
+      <div className="nav-logo">
+        <img src="/MountainFinance.png" alt="Mountain Finance" className="nav-logo-img" />
+      </div>
       <button className="nav-hamburger" onClick={() => setMenuOpen(!menuOpen)} aria-label="Menu">
         <span /><span /><span />
       </button>

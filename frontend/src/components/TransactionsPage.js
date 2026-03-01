@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import NavBar from './NavBar';
-import { apiGet, apiPost, apiPatch } from '../api';
+import { apiGet, apiPost, apiPatch, API_BASE } from '../api';
 
 function formatDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -90,6 +90,8 @@ const SORT_LABELS = {
   amount_asc: 'Low → High',
   merchant_asc: 'A → Z',
   merchant_desc: 'Z → A',
+  category_asc: 'A → Z',
+  category_desc: 'Z → A',
 };
 
 function formatRangeDate(dateStr) {
@@ -118,8 +120,12 @@ export default function TransactionsPage() {
   const [formCategoryId, setFormCategoryId] = useState('');
   const [formMerchant, setFormMerchant] = useState('');
   const [formNote, setFormNote] = useState('');
+  const [formRecurring, setFormRecurring] = useState(false);
+  const [formFrequency, setFormFrequency] = useState('monthly');
   const [formError, setFormError] = useState('');
   const [formSaving, setFormSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
   const [categories, setCategories] = useState([]);
 
   // Inline edit state
@@ -208,7 +214,57 @@ export default function TransactionsPage() {
     setFormCategoryId('');
     setFormMerchant('');
     setFormNote('');
+    setFormRecurring(false);
+    setFormFrequency('monthly');
     setFormError('');
+  };
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    setFormError('');
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      setFormError("Authentication error: No token found.");
+      setUploading(false);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${API_BASE}/transactions/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.detail || 'Failed to upload and process receipt.');
+      }
+
+      const data = await response.json();
+
+      // Autofill the form
+      setFormType('expense');
+      setFormAmount(data.amount || '0.00');
+      setFormDate(data.occurred_on || formatDate(new Date()));
+      setFormCategoryId(data.category_id || '');
+      setFormMerchant(data.merchant || '');
+      setFormNote(data.note || 'Imported from receipt');
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleSubmitTransaction = async (e) => {
@@ -221,14 +277,19 @@ export default function TransactionsPage() {
 
     setFormSaving(true);
     try {
-      await apiPost('/transactions', {
+      const body = {
         type: formType,
         amount: formAmount,
         occurred_on: formDate,
         category_id: formCategoryId,
         merchant: formMerchant || null,
         note: formNote || null,
-      });
+      };
+      if (formRecurring) {
+        body.make_recurring = true;
+        body.recurring_frequency = formFrequency;
+      }
+      await apiPost('/transactions', body);
       resetForm();
       setShowForm(false);
       fetchTransactions();
@@ -344,7 +405,7 @@ export default function TransactionsPage() {
                 </div>
                 <div className="form-group">
                   <label>Amount</label>
-                  <input type="number" step="0.01" min="0.01" placeholder="0.00" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} />
+                  <input type="number" step="0.01" min="0.01" placeholder="0.00" value={formAmount} onChange={(e) => { const v = e.target.value; setFormAmount(v !== '' && Number(v) < 0 ? '' : v); }} />
                 </div>
                 <div className="form-group">
                   <label>Date</label>
@@ -370,7 +431,33 @@ export default function TransactionsPage() {
                   <input type="text" placeholder="Optional note..." value={formNote} onChange={(e) => setFormNote(e.target.value)} />
                 </div>
               </div>
-              <button className="primary-btn" disabled={formSaving}>{formSaving ? 'Saving...' : 'Save Transaction'}</button>
+              <div className="form-row" style={{ alignItems: 'center', gap: 16 }}>
+                <label className="recurring-toggle-label">
+                  <input type="checkbox" checked={formRecurring} onChange={(e) => setFormRecurring(e.target.checked)} />
+                  Make this recurring
+                </label>
+                {formRecurring && (
+                  <div className="form-group" style={{ marginBottom: 0, minWidth: 160 }}>
+                    <select className="form-select" value={formFrequency} onChange={(e) => setFormFrequency(e.target.value)}>
+                      <option value="monthly">Monthly</option>
+                      <option value="biweekly">Every 2 Weeks</option>
+                      <option value="weekly">Weekly</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <button className="primary-btn" disabled={formSaving || uploading}>
+                  {formSaving ? 'Saving...' : 'Save Transaction'}
+                </button>
+                <button type="button" className="secondary-btn" onClick={() => fileInputRef.current.click()} disabled={uploading || formSaving}>
+                  {uploading ? 'Uploading...' : 'Upload files/Take a photo'}
+                </button>
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#666', marginTop: '4px' }}>
+                Tap the button to snap a photo or choose an existing file
+              </div>
+              <input type="file" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }} accept="image/*,application/pdf" capture="environment" />
             </form>
           </div>
         )}
@@ -453,8 +540,9 @@ export default function TransactionsPage() {
                     className="txn-search-input"
                     placeholder="Min"
                     min="0"
+                    step="0.01"
                     value={amountMin}
-                    onChange={(e) => setAmountMin(e.target.value)}
+                    onChange={(e) => { const v = e.target.value; setAmountMin(v !== '' && Number(v) < 0 ? '' : v); }}
                   />
                   <span className="txn-range-sep">–</span>
                   <input
@@ -462,8 +550,9 @@ export default function TransactionsPage() {
                     className="txn-search-input"
                     placeholder="Max"
                     min="0"
+                    step="0.01"
                     value={amountMax}
-                    onChange={(e) => setAmountMax(e.target.value)}
+                    onChange={(e) => { const v = e.target.value; setAmountMax(v !== '' && Number(v) < 0 ? '' : v); }}
                   />
                 </div>
               </div>
@@ -475,6 +564,7 @@ export default function TransactionsPage() {
                 { label: 'Date', options: [{ value: 'date_desc', label: 'Newest' }, { value: 'date_asc', label: 'Oldest' }] },
                 { label: 'Amount', options: [{ value: 'amount_desc', label: 'High → Low' }, { value: 'amount_asc', label: 'Low → High' }] },
                 { label: 'Merchant', options: [{ value: 'merchant_asc', label: 'A → Z' }, { value: 'merchant_desc', label: 'Z → A' }] },
+                { label: 'Category', options: [{ value: 'category_asc', label: 'A → Z' }, { value: 'category_desc', label: 'Z → A' }] },
               ].map((group) => (
                 <div key={group.label} className="txn-filter-group">
                   <label>{group.label}</label>
@@ -555,9 +645,24 @@ export default function TransactionsPage() {
                   </div>
                 ) : (
                   <div className="txn-list">
-                    {groups.map((group, gi) => (
+                    {groups.map((group, gi) => {
+                      const grpIncome = group.label ? group.items.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(Number(t.amount)), 0) : 0;
+                      const grpExpense = group.label ? group.items.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(Number(t.amount)), 0) : 0;
+                      const grpNet = grpIncome - grpExpense;
+                      return (
                       <div key={gi}>
-                        {group.label && <div className="txn-date-header">{group.label}</div>}
+                        {group.label && (
+                          <div className="txn-date-header">
+                            <span>{group.label}</span>
+                            <div className="txn-group-summary">
+                              {grpIncome > 0 && <span className="calendar-summary-amount income">+${grpIncome.toFixed(2)}</span>}
+                              {grpExpense > 0 && <span className="calendar-summary-amount expense">-${grpExpense.toFixed(2)}</span>}
+                              <span className={`calendar-summary-net ${grpNet >= 0 ? 'income' : 'expense'}`}>
+                                {grpNet >= 0 ? '+' : '-'}${Math.abs(grpNet).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                         {group.items.map((t) => {
                           const isEditing = editingId === t.id;
                           const displayType = isEditing ? editType : t.type;
@@ -576,6 +681,7 @@ export default function TransactionsPage() {
                                   <div className="txn-item-details">
                                     <div className="txn-item-merchant-row">
                                       <span className="txn-item-merchant">{displayMerchant}</span>
+                                      {t.recurring_rule_id && <span className="recurring-badge">recurring</span>}
                                       {categoryName && <span className="txn-item-category">{categoryName}</span>}
                                     </div>
                                     <span className="txn-item-date">{displayDate}</span>
@@ -618,7 +724,25 @@ export default function TransactionsPage() {
                           );
                         })}
                       </div>
-                    ))}
+                      );
+                    })}
+                    {aggregation !== 'default' && groups.length > 1 && (() => {
+                      const allIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+                      const allExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+                      const allNet = allIncome - allExpense;
+                      return (
+                        <div className="txn-list-total">
+                          <span className="txn-list-total-label">Total</span>
+                          <div className="txn-group-summary">
+                            {allIncome > 0 && <span className="calendar-summary-amount income">+${allIncome.toFixed(2)}</span>}
+                            {allExpense > 0 && <span className="calendar-summary-amount expense">-${allExpense.toFixed(2)}</span>}
+                            <span className={`calendar-summary-net ${allNet >= 0 ? 'income' : 'expense'}`}>
+                              {allNet >= 0 ? '+' : '-'}${Math.abs(allNet).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -852,7 +976,7 @@ export default function TransactionsPage() {
                 </button>
                 <button
                   className={`txn-toggle-btn${viewMode === 'calendar' ? ' active' : ''}`}
-                  onClick={() => setViewMode('calendar')}
+                  onClick={() => { setViewMode('calendar'); if (aggregation === 'default') setAggregation('daily'); }}
                 >
                   Calendar
                 </button>

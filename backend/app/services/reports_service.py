@@ -101,7 +101,7 @@ async def get_user_currency(connection: AsyncConnection, user_id: UUID) -> str:
     return row["base_currency"]
 
 
-async def _all_time_balance_amount(connection: AsyncConnection, user_id: UUID, currency: str) -> Decimal:
+async def _all_time_balance_amount(connection: AsyncConnection, user_id: UUID) -> Decimal:
     """All-time balance = income - expense for the authenticated tenant."""
     async with connection.cursor() as cursor:
         await cursor.execute(
@@ -111,10 +111,9 @@ async def _all_time_balance_amount(connection: AsyncConnection, user_id: UUID, c
                 COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense_total
             FROM transactions
             WHERE user_id = %s
-              AND currency = %s
               AND deleted_at IS NULL
             """,
-            (user_id, currency),
+            (user_id,),
         )
         row = await cursor.fetchone()
 
@@ -126,7 +125,6 @@ async def _all_time_balance_amount(connection: AsyncConnection, user_id: UUID, c
 async def _expense_sum_in_window(
     connection: AsyncConnection,
     user_id: UUID,
-    currency: str,
     start_inclusive: date,
     end_exclusive: date,
 ) -> Decimal:
@@ -137,13 +135,12 @@ async def _expense_sum_in_window(
             SELECT COALESCE(SUM(amount), 0) AS expense_total
             FROM transactions
             WHERE user_id = %s
-              AND currency = %s
               AND type = 'expense'
               AND deleted_at IS NULL
               AND occurred_on >= %s
               AND occurred_on < %s
             """,
-            (user_id, currency, start_inclusive, end_exclusive),
+            (user_id, start_inclusive, end_exclusive),
         )
         row = await cursor.fetchone()
 
@@ -153,7 +150,6 @@ async def _expense_sum_in_window(
 async def _three_complete_month_expenses(
     connection: AsyncConnection,
     user_id: UUID,
-    currency: str,
     anchor_month_start: date,
 ) -> dict[date, Decimal]:
     """Aggregate expense totals for the 3 full months before the selected month."""
@@ -168,14 +164,13 @@ async def _three_complete_month_expenses(
                 COALESCE(SUM(amount), 0) AS expense_total
             FROM transactions
             WHERE user_id = %s
-              AND currency = %s
               AND type = 'expense'
               AND deleted_at IS NULL
               AND occurred_on >= %s
               AND occurred_on < %s
             GROUP BY month_start
             """,
-            (user_id, currency, start, end),
+            (user_id, start, end),
         )
         rows = await cursor.fetchall()
 
@@ -191,11 +186,10 @@ async def get_summary(
     """Return summary cards data for the reports page."""
     currency = await get_user_currency(connection, user_id)
 
-    balance_amount = await _all_time_balance_amount(connection, user_id, currency)
+    balance_amount = await _all_time_balance_amount(connection, user_id)
     monthly_spend_amount = await _expense_sum_in_window(
         connection,
         user_id,
-        currency,
         month_start,
         month_end_exclusive,
     )
@@ -204,7 +198,6 @@ async def get_summary(
     previous_totals = await _three_complete_month_expenses(
         connection,
         user_id,
-        currency,
         month_start,
     )
 
@@ -216,7 +209,6 @@ async def get_summary(
     fallback_expense = await _expense_sum_in_window(
         connection,
         user_id,
-        currency,
         fallback_start,
         fallback_end,
     )
@@ -252,7 +244,6 @@ async def get_top_categories(
     total_monthly_spend = await _expense_sum_in_window(
         connection,
         user_id,
-        currency,
         month_start,
         month_end_exclusive,
     )
@@ -266,7 +257,6 @@ async def get_top_categories(
             FROM transactions t
             LEFT JOIN categories c ON c.id = t.category_id
             WHERE t.user_id = %s
-              AND t.currency = %s
               AND t.type = 'expense'
               AND t.deleted_at IS NULL
               AND t.occurred_on >= %s
@@ -275,7 +265,7 @@ async def get_top_categories(
             ORDER BY spent_amount DESC, category ASC
             LIMIT %s
             """,
-            (user_id, currency, month_start, month_end_exclusive, limit),
+            (user_id, month_start, month_end_exclusive, limit),
         )
         rows = await cursor.fetchall()
 
@@ -317,13 +307,12 @@ async def get_trends(
                 COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income_amount
             FROM transactions
             WHERE user_id = %s
-              AND currency = %s
               AND deleted_at IS NULL
               AND occurred_on >= %s
               AND occurred_on < %s
             GROUP BY month_start
             """,
-            (user_id, currency, range_start, range_end),
+            (user_id, range_start, range_end),
         )
         rows = await cursor.fetchall()
 
@@ -356,7 +345,6 @@ async def get_monthly_breakdown(
             SELECT occurred_on AS txn_date, COALESCE(SUM(amount), 0) AS expense_amount
             FROM transactions
             WHERE user_id = %s
-              AND currency = %s
               AND type = 'expense'
               AND deleted_at IS NULL
               AND occurred_on >= %s
@@ -364,7 +352,7 @@ async def get_monthly_breakdown(
             GROUP BY txn_date
             ORDER BY txn_date ASC
             """,
-            (user_id, currency, month_start, month_end_exclusive),
+            (user_id, month_start, month_end_exclusive),
         )
         rows = await cursor.fetchall()
 
