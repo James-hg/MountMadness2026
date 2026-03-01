@@ -108,25 +108,6 @@ export default function SettingsPage() {
           </form>
         </div>
 
-        {/* Currency Section */}
-        <div className="card">
-          <h2 className="card-title">Currency</h2>
-          <form className="page-form" onSubmit={(e) => e.preventDefault()}>
-            <div className="form-group" style={{ maxWidth: 280 }}>
-              <label>Default Currency</label>
-              <select className="form-select" disabled>
-                <option value="CAD">🇨🇦 CAD – Canadian Dollar</option>
-                <option value="USD">🇺🇸 USD – US Dollar</option>
-                <option value="KRW">🇰🇷 KRW – Korean Won</option>
-                <option value="INR">🇮🇳 INR – Indian Rupee</option>
-                <option value="CNY">🇨🇳 CNY – Chinese Yuan</option>
-                <option value="EUR">🇪🇺 EUR – Euro</option>
-                <option value="GBP">🇬🇧 GBP – British Pound</option>
-              </select>
-            </div>
-          </form>
-        </div>
-
         {/* Change Password Section */}
         <div className="card">
           <h2 className="card-title">Change Password</h2>
