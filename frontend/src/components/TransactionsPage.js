@@ -60,29 +60,6 @@ function groupTransactions(txns, aggregation) {
   return order.map((k) => groups[k]);
 }
 
-function compareBy(key, a, b) {
-  switch (key) {
-    case 'date_asc': return a.occurred_on.localeCompare(b.occurred_on);
-    case 'date_desc': return b.occurred_on.localeCompare(a.occurred_on);
-    case 'amount_desc': return Number(b.amount) - Number(a.amount);
-    case 'amount_asc': return Number(a.amount) - Number(b.amount);
-    case 'merchant_asc': return (a.merchant || '').localeCompare(b.merchant || '');
-    case 'merchant_desc': return (b.merchant || '').localeCompare(a.merchant || '');
-    default: return 0;
-  }
-}
-
-function sortTransactions(txns, criteria) {
-  const keys = criteria.length > 0 ? criteria : ['date_desc'];
-  return [...txns].sort((a, b) => {
-    for (const key of keys) {
-      const cmp = compareBy(key, a, b);
-      if (cmp !== 0) return cmp;
-    }
-    return 0;
-  });
-}
-
 // ── Calendar helpers ──
 
 function getCalendarDays(year, month) {
@@ -105,6 +82,20 @@ function getCalendarDays(year, month) {
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const SORT_LABELS = {
+  date_desc: 'Newest',
+  date_asc: 'Oldest',
+  amount_desc: 'High → Low',
+  amount_asc: 'Low → High',
+  merchant_asc: 'A → Z',
+  merchant_desc: 'Z → A',
+};
+
+function formatRangeDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('default', { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 export default function TransactionsPage() {
   const [showForm, setShowForm] = useState(false);
@@ -150,6 +141,9 @@ export default function TransactionsPage() {
       }
       if (filterType) params.push(`type=${filterType}`);
       if (searchQuery.trim()) params.push(`q=${encodeURIComponent(searchQuery.trim())}`);
+      if (amountMin !== '') params.push(`amount_min=${amountMin}`);
+      if (amountMax !== '') params.push(`amount_max=${amountMax}`);
+      if (sortBy.length > 0) params.push(`sort_by=${sortBy.join(',')}`);
 
       let allItems = [];
       let offset = 0;
@@ -163,33 +157,20 @@ export default function TransactionsPage() {
         hasMore = allItems.length < data.total;
       }
 
-      // client-side amount filter
-      const minVal = amountMin !== '' ? Number(amountMin) : null;
-      const maxVal = amountMax !== '' ? Number(amountMax) : null;
-      if (minVal !== null || maxVal !== null) {
-        allItems = allItems.filter((t) => {
-          const amt = Number(t.amount);
-          if (minVal !== null && amt < minVal) return false;
-          if (maxVal !== null && amt > maxVal) return false;
-          return true;
-        });
-      }
-
       setTransactions(allItems);
     } catch {
       setTransactions([]);
     } finally {
       setLoading(false);
     }
-  }, [viewMode, calYear, calMonth, dateFrom, dateTo, filterType, searchQuery, amountMin, amountMax]);
+  }, [viewMode, calYear, calMonth, dateFrom, dateTo, filterType, searchQuery, amountMin, amountMax, sortBy]);
 
   useEffect(() => {
     fetchTransactions();
   }, [fetchTransactions]);
 
   // ── List helpers ──
-  const sorted = sortTransactions(transactions, sortBy);
-  const groups = groupTransactions(sorted, aggregation);
+  const groups = groupTransactions(transactions, aggregation);
 
   // ── Calendar helpers ──
   function transactionsForDate(dateObj) {
@@ -301,22 +282,42 @@ export default function TransactionsPage() {
               </div>
 
               <div className="txn-filter-group">
-                <label>From</label>
-                <input
-                  type="date"
-                  className="txn-search-input"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                />
-              </div>
-              <div className="txn-filter-group">
-                <label>To</label>
-                <input
-                  type="date"
-                  className="txn-search-input"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
+                <label>Date Range</label>
+                <div className="txn-date-range">
+                  <div className="txn-date-field">
+                    <span className="txn-date-label">From</span>
+                    <input
+                      type="date"
+                      className={`txn-search-input${dateFrom ? ' txn-date-active' : ''}`}
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="txn-date-field">
+                    <span className="txn-date-label">To</span>
+                    <input
+                      type="date"
+                      className={`txn-search-input${dateTo ? ' txn-date-active' : ''}`}
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                    />
+                  </div>
+                  {(dateFrom || dateTo) && (
+                    <div className="txn-date-range-footer">
+                      {dateFrom && dateTo && (
+                        <span className="txn-date-range-badge">
+                          {formatRangeDate(dateFrom)} – {formatRangeDate(dateTo)}
+                        </span>
+                      )}
+                      <button
+                        className="txn-date-clear"
+                        onClick={() => { setDateFrom(''); setDateTo(''); }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="txn-filter-group">
@@ -372,6 +373,47 @@ export default function TransactionsPage() {
                   </div>
                 </div>
               ))}
+
+              {sortBy.length > 0 && (
+                <div className="txn-sort-order">
+                  <label>Order</label>
+                  <div className="txn-sort-order-list">
+                    {sortBy.map((key, idx) => (
+                      <div key={key} className="txn-sort-chip">
+                        <span className="txn-sort-chip-num">{idx + 1}</span>
+                        <span className="txn-sort-chip-label">{SORT_LABELS[key]}</span>
+                        <div className="txn-sort-chip-actions">
+                          <button
+                            className="txn-sort-chip-btn"
+                            disabled={idx === 0}
+                            onClick={() => setSortBy((prev) => {
+                              const next = [...prev];
+                              [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                              return next;
+                            })}
+                            title="Move up"
+                          >&#8593;</button>
+                          <button
+                            className="txn-sort-chip-btn"
+                            disabled={idx === sortBy.length - 1}
+                            onClick={() => setSortBy((prev) => {
+                              const next = [...prev];
+                              [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                              return next;
+                            })}
+                            title="Move down"
+                          >&#8595;</button>
+                          <button
+                            className="txn-sort-chip-btn txn-sort-chip-remove"
+                            onClick={() => setSortBy((prev) => prev.filter((v) => v !== key))}
+                            title="Remove"
+                          >&times;</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </aside>
 

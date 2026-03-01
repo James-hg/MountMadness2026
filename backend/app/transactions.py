@@ -192,6 +192,8 @@ def _build_list_filters(
     type_filter: TransactionType | None,
     category_id: UUID | None,
     q: str | None,
+    amount_min: Decimal | None = None,
+    amount_max: Decimal | None = None,
 ) -> tuple[str, list[object]]:
     filters = ["user_id = %s", "deleted_at IS NULL"]
     params: list[object] = [user_id]
@@ -217,6 +219,14 @@ def _build_list_filters(
         pattern = f"%{search}%"
         filters.append("(merchant ILIKE %s OR note ILIKE %s)")
         params.extend([pattern, pattern])
+
+    if amount_min is not None:
+        filters.append("amount >= %s")
+        params.append(amount_min)
+
+    if amount_max is not None:
+        filters.append("amount <= %s")
+        params.append(amount_max)
 
     return " AND ".join(filters), params
 
@@ -256,6 +266,32 @@ async def create_transaction(
     return TransactionResponse.model_validate(row)
 
 
+ALLOWED_SORTS = {
+    "date_asc": "occurred_on ASC",
+    "date_desc": "occurred_on DESC",
+    "amount_asc": "amount ASC",
+    "amount_desc": "amount DESC",
+    "merchant_asc": "LOWER(merchant) ASC NULLS LAST",
+    "merchant_desc": "LOWER(merchant) DESC NULLS LAST",
+}
+
+
+def _build_order_clause(sort_by: str | None) -> str:
+    if not sort_by:
+        return "occurred_on DESC, created_at DESC"
+
+    clauses = []
+    for key in sort_by.split(","):
+        key = key.strip()
+        if key in ALLOWED_SORTS:
+            clauses.append(ALLOWED_SORTS[key])
+
+    if not clauses:
+        return "occurred_on DESC, created_at DESC"
+
+    return ", ".join(clauses)
+
+
 @router.get("/transactions", response_model=TransactionListResponse)
 async def list_transactions(
     date_from: date | None = Query(default=None),
@@ -263,6 +299,9 @@ async def list_transactions(
     type_filter: TransactionType | None = Query(default=None, alias="type"),
     category_id: UUID | None = Query(default=None),
     q: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    amount_min: Decimal | None = Query(default=None, ge=Decimal("0")),
+    amount_max: Decimal | None = Query(default=None, ge=Decimal("0")),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     user_id: UUID = Depends(get_current_user_id),
@@ -277,7 +316,11 @@ async def list_transactions(
         type_filter=type_filter,
         category_id=category_id,
         q=q,
+        amount_min=amount_min,
+        amount_max=amount_max,
     )
+
+    order_clause = _build_order_clause(sort_by)
 
     async with connection.cursor() as cursor:
         await cursor.execute(
@@ -291,7 +334,7 @@ async def list_transactions(
             SELECT id, user_id, category_id, type, amount, occurred_on, merchant, note, created_at, updated_at
             FROM transactions
             WHERE {where_clause}
-            ORDER BY occurred_on DESC, created_at DESC
+            ORDER BY {order_clause}
             LIMIT %s OFFSET %s
             """,
             [*params, limit, offset],

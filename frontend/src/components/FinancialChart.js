@@ -19,7 +19,7 @@ export default function FinancialChart() {
   const [finData, setFinData] = useState(FALLBACK);
 
   useEffect(() => {
-    apiGet('/api/financial-data')
+    apiGet('/financial-data')
       .then(setFinData)
       .catch(() => setFinData(FALLBACK));
   }, []);
