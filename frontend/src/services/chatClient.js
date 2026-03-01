@@ -1,6 +1,5 @@
 import { apiPost } from '../api';
 
-<<<<<<< HEAD
 const STORAGE_PREFIX = 'mm_chat_widget';
 const LEGACY_STORAGE_CONVERSATION_ID = 'mm_chat_widget_conversation_id';
 
@@ -17,41 +16,23 @@ export function getChatStorageScope(user) {
 function readConversationId(scope) {
   try {
     const raw = localStorage.getItem(conversationKey(scope));
-=======
-const STORAGE_CONVERSATION_ID = 'mm_chat_widget_conversation_id';
-
-function readConversationId() {
-  try {
-    const raw = localStorage.getItem(STORAGE_CONVERSATION_ID);
->>>>>>> master
     return raw && raw.trim() ? raw.trim() : null;
   } catch {
     return null;
   }
 }
 
-<<<<<<< HEAD
 function writeConversationId(scope, conversationId) {
   try {
     if (conversationId) {
       localStorage.setItem(conversationKey(scope), conversationId);
-=======
-function writeConversationId(conversationId) {
-  try {
-    if (conversationId) {
-      localStorage.setItem(STORAGE_CONVERSATION_ID, conversationId);
->>>>>>> master
     }
   } catch {
     // Ignore storage failures.
   }
 }
 
-<<<<<<< HEAD
 export async function sendChatMessage({ message, conversationId = null, storageScope = 'anon' }) {
-=======
-export async function sendChatMessage({ message, conversationId = null }) {
->>>>>>> master
   const trimmed = String(message || '').trim();
   if (!trimmed) {
     throw new Error('Message is empty.');
@@ -59,11 +40,7 @@ export async function sendChatMessage({ message, conversationId = null }) {
 
   const payload = {
     message: trimmed,
-<<<<<<< HEAD
     conversation_id: conversationId || readConversationId(storageScope),
-=======
-    conversation_id: conversationId || readConversationId(),
->>>>>>> master
   };
 
   const data = await apiPost('/ai/chat', payload);
@@ -75,11 +52,7 @@ export async function sendChatMessage({ message, conversationId = null }) {
 
   const nextConversationId = String(data?.conversation_id || '').trim();
   if (nextConversationId) {
-<<<<<<< HEAD
     writeConversationId(storageScope, nextConversationId);
-=======
-    writeConversationId(nextConversationId);
->>>>>>> master
   }
 
   return {
@@ -90,7 +63,6 @@ export async function sendChatMessage({ message, conversationId = null }) {
   };
 }
 
-<<<<<<< HEAD
 export function getStoredConversationId(storageScope = 'anon') {
   return readConversationId(storageScope);
 }
@@ -115,8 +87,4 @@ export function clearChatStorageForUser(user) {
   } catch {
     // Ignore storage failures.
   }
-=======
-export function getStoredConversationId() {
-  return readConversationId();
->>>>>>> master
 }
